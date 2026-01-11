@@ -1,0 +1,26 @@
+# --- SISTEMA ---
+.DS_Store
+Thumbs.db
+
+# --- PYTHON ---
+mi_entorno/
+__pycache__/
+*.py[cod]
+*.so
+
+# --- BASE DE DATOS LOCAL ---
+# No queremos subir tus datos financieros reales
+*.db
+*.sqlite3
+backend/financial.db
+
+# --- FRONTEND (NODE) ---
+node_modules/
+frontend/node_modules/
+dist/
+build/
+.neoconf.json
+
+# --- VARIABLES DE ENTORNO (SEGURIDAD) ---
+.env
+.env.local
