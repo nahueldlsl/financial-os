@@ -1,125 +1,141 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, Wallet, Plus, Search } from 'lucide-react';
 
-// Interfaces (Tipos de datos)
-interface Posicion {
-    Ticker: string;
-    Cantidad_Total: number;
-    Precio_Promedio: number;
-    Precio_Actual: number;
-    Valor_Mercado: number;
-    Ganancia_USD: number;
-    Rendimiento_Porc: number;
-}
+// Asegúrate que el archivo se llame usePortfolio.ts (en inglés)
+import { usePortfolio } from '../hooks/usePortfolio';
+import { AssetCard } from '../components/market/AssetCard';
+import { TradeModal } from '../components/market/TradeModal';
+import { CashModal } from '../components/market/CashModal';
 
-interface PortfolioData {
-    resumen: {
-        valor_total_portafolio: number;
-        ganancia_total_usd: number;
-        rendimiento_total_porc: number;
-    };
-    posiciones: Posicion[];
-}
+// Usamos 'import type' para interfaces
+import type { Posicion } from '../types';
 
 export default function MarketView() {
-    const [data, setData] = useState<PortfolioData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { data, cash, loading, error, executeTrade, manageCash } = usePortfolio();
 
-    useEffect(() => {
-        fetch('http://127.0.0.1:8000/api/portfolio')
-            .then(res => {
-                if (!res.ok) throw new Error('Error conectando al servidor');
-                return res.json();
-            })
-            .then(setData)
-            .catch(err => {
-                setError(err.message);
-                setLoading(false);
-            });
-    }, []);
+    // Estados Modales
+    const [isTradeOpen, setTradeOpen] = useState(false);
+    const [isCashOpen, setCashOpen] = useState(false);
+
+    // Estado Selección Activo
+    const [selectedAsset, setSelectedAsset] = useState<{ ticker: string, price: number } | undefined>(undefined);
+
+    // Estado Búsqueda
+    const [search, setSearch] = useState('');
+
+    const handleOpenTrade = (ticker = '', price = 0) => {
+        setSelectedAsset({ ticker, price });
+        setTradeOpen(true);
+    };
 
     if (error) return <div className="p-10 text-red-500 text-center">Error: {error}</div>;
-    if (!data && loading) return <div className="p-10 text-slate-400 text-center animate-pulse">Cargando mercado...</div>;
+    if (loading && !data) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">Cargando portafolio...</div>;
+
+    // Datos seguros
+    const resumen = data?.resumen || { valor_total_portafolio: 0, ganancia_total_usd: 0, rendimiento_total_porc: 0 };
+    const posiciones = data?.posiciones || [];
+
+    // --- CORRECCIÓN 1: Tipado explícito en el filtro ---
+    const filteredPosiciones = posiciones.filter((p: Posicion) =>
+        p.Ticker.toLowerCase().includes(search.toLowerCase())
+    );
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
-            {/* Header con Botón de Volver */}
-            <header className="max-w-7xl mx-auto mb-8 flex items-center gap-4">
-                <Link to="/" className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition">
-                    <ArrowLeft size={20} />
-                </Link>
-                <div>
-                    <h1 className="text-3xl font-bold text-white">Mercado de Valores</h1>
-                    <p className="text-slate-400 text-sm">Tus posiciones en tiempo real (Hapi + Yahoo Finance)</p>
+        <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-8 font-sans">
+
+            {/* --- HEADER --- */}
+            <header className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div className="flex items-center gap-4">
+                    <Link to="/" className="p-3 bg-slate-800/50 hover:bg-slate-700 rounded-xl transition">
+                        <ArrowLeft size={20} />
+                    </Link>
+                    <div>
+                        <h1 className="text-3xl font-bold text-white tracking-tight">Portafolio</h1>
+                        <div className="flex items-center gap-2 text-slate-400 text-sm">
+                            <span>Valor Total:</span>
+                            <span className="text-emerald-400 font-bold">${resumen.valor_total_portafolio.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- CAJA BROKER --- */}
+                <div className="flex items-center gap-4 bg-slate-900 border border-slate-800 p-2 pr-4 rounded-2xl shadow-lg">
+                    <button
+                        onClick={() => setCashOpen(true)}
+                        className="bg-indigo-600 hover:bg-indigo-500 p-3 rounded-xl transition shadow-lg shadow-indigo-500/20"
+                    >
+                        <Wallet size={20} className="text-white" />
+                    </button>
+                    <div>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Buying Power</p>
+                        <p className="text-xl font-bold text-white">${cash.toLocaleString()}</p>
+                    </div>
+                    <div className="h-8 w-px bg-slate-800 mx-2" />
+                    <button
+                        onClick={() => handleOpenTrade()}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-bold transition"
+                    >
+                        <Plus size={16} /> Operar
+                    </button>
                 </div>
             </header>
 
-            {/* Tarjetas de Resumen Superior */}
-            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                    <p className="text-slate-400 text-sm font-medium">Valor Total</p>
-                    <p className="text-3xl font-bold mt-2">${data?.resumen.valor_total_portafolio.toLocaleString()}</p>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                    <p className="text-slate-400 text-sm font-medium">Ganancia Neta</p>
-                    <div className={`flex items-center gap-2 mt-2 text-3xl font-bold ${data?.resumen.ganancia_total_usd! >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {data?.resumen.ganancia_total_usd! >= 0 ? '+' : ''}
-                        ${data?.resumen.ganancia_total_usd}
-                    </div>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                    <p className="text-slate-400 text-sm font-medium">Rendimiento Total</p>
-                    <div className={`flex items-center gap-2 mt-2 text-3xl font-bold ${data?.resumen.rendimiento_total_porc! >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {data?.resumen.rendimiento_total_porc! >= 0 ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
-                        {data?.resumen.rendimiento_total_porc}%
-                    </div>
+            {/* --- SEARCH BAR --- */}
+            <div className="max-w-7xl mx-auto mb-6">
+                <div className="relative">
+                    <Search className="absolute left-4 top-3.5 text-slate-500" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Buscar activo..."
+                        className="w-full bg-slate-900/50 border border-slate-800 rounded-xl py-3 pl-12 pr-4 text-slate-200 focus:border-indigo-500 outline-none transition"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
                 </div>
             </div>
 
-            {/* Tabla Principal */}
-            <div className="max-w-7xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-800/50 text-slate-400 uppercase text-xs tracking-wider">
-                                <th className="p-4 font-semibold">Ticker</th>
-                                <th className="p-4 font-semibold">Cantidad</th>
-                                <th className="p-4 font-semibold">Precio Prom.</th>
-                                <th className="p-4 font-semibold">Precio Actual</th>
-                                <th className="p-4 font-semibold">Valor Total</th>
-                                <th className="p-4 font-semibold">P/L ($)</th>
-                                <th className="p-4 font-semibold">P/L (%)</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                            {data?.posiciones.map((accion) => (
-                                <tr key={accion.Ticker} className="hover:bg-slate-800/30 transition-colors">
-                                    <td className="p-4 font-bold text-blue-400">{accion.Ticker}</td>
-                                    <td className="p-4 text-slate-300">{accion.Cantidad_Total}</td>
-                                    <td className="p-4 text-slate-400">${accion.Precio_Promedio.toFixed(2)}</td>
-                                    <td className="p-4 text-slate-200">${accion.Precio_Actual.toFixed(2)}</td>
-                                    <td className="p-4 font-bold text-white">${accion.Valor_Mercado.toLocaleString()}</td>
-                                    <td className={`p-4 font-medium ${accion.Ganancia_USD >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {accion.Ganancia_USD >= 0 ? '+' : ''}{accion.Ganancia_USD}
-                                    </td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${accion.Rendimiento_Porc >= 0
-                                                ? 'bg-emerald-500/10 text-emerald-400'
-                                                : 'bg-red-500/10 text-red-400'
-                                            }`}>
-                                            {accion.Rendimiento_Porc}%
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            {/* --- GRID DE TARJETAS --- */}
+            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+                {/* --- CORRECCIÓN 2: Tipado explícito en el map --- */}
+                {filteredPosiciones.map((pos: Posicion) => (
+                    <AssetCard
+                        key={pos.Ticker}
+                        asset={pos}
+                        totalPortfolioValue={resumen.valor_total_portafolio}
+                        onClick={() => handleOpenTrade(pos.Ticker, pos.Precio_Actual)}
+                    />
+                ))}
+
+                {/* Tarjeta de "Agregar Nuevo" al final */}
+                <button
+                    onClick={() => handleOpenTrade()}
+                    className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900/30 rounded-2xl min-h-[180px] transition-all group"
+                >
+                    <div className="p-4 bg-slate-900 rounded-full group-hover:scale-110 transition-transform">
+                        <Plus size={24} className="text-slate-500 group-hover:text-indigo-400" />
+                    </div>
+                    <span className="text-slate-500 font-medium group-hover:text-slate-300">Agregar Activo</span>
+                </button>
             </div>
+
+            {/* --- MODALES --- */}
+            <TradeModal
+                isOpen={isTradeOpen}
+                onClose={() => setTradeOpen(false)}
+                onSubmit={executeTrade}
+                initialTicker={selectedAsset?.ticker}
+                currentPrice={selectedAsset?.price}
+            />
+
+            <CashModal
+                isOpen={isCashOpen}
+                onClose={() => setCashOpen(false)}
+                currentBalance={cash}
+                onSubmit={manageCash}
+            />
+
         </div>
     );
 }

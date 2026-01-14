@@ -21,9 +21,9 @@ export interface Posicion {
     Precio_Promedio: number;
     Precio_Actual: number;
     Valor_Mercado: number;
+    Costo_Base: number;       // Nuevo (Calculado en frontend o backend)
     Ganancia_USD: number;
     Rendimiento_Porc: number;
-    // Agregamos opcionales por si en el futuro los muestras
     DRIP?: boolean;
 }
 
@@ -38,8 +38,51 @@ export interface PortfolioResponse {
     posiciones: Posicion[];
 }
 
+// --- NUEVOS TIPOS PARA TRADING ---
+export interface BrokerCash {
+    saldo_usd: number;
+}
+
+export interface TradeAction {
+    ticker: string;
+    cantidad: number;
+    precio: number;
+    fecha?: string; // ISO String
+    usar_caja_broker: boolean;
+}
+
+export interface BrokerFund {
+    monto_enviado: number;
+    monto_recibido: number;
+    tipo: 'DEPOSIT' | 'WITHDRAW';
+}
+
 export interface DripResponse {
     mensaje: string;
     cambios: any[];
     total_procesados: number;
+}
+
+
+
+export interface Asset {
+    id: string;
+    name: string;
+    category: 'Stock' | 'Cash' | 'Crypto' | 'Other';
+    amount: number;
+}
+
+export interface DashboardData {
+    net_worth: number;
+    performance: {
+        value: number;
+        percentage: number;
+        isPositive: boolean;
+    };
+    assets: Asset[];
+    chart_data: {
+        name: string;
+        value: number;
+        color: string;
+    }[];
 }

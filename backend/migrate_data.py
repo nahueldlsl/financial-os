@@ -19,39 +19,6 @@ def migrar():
     create_db_and_tables()
     
     with Session(engine) as session:
-        # --- 1. MIGRAR MOVIMIENTOS ---
-        if os.path.exists("movimientos.json"):
-            with open("movimientos.json", "r") as f:
-                data = json.load(f)
-                count = 0
-                for item in data:
-                    # CONVERSIÓN DE FECHA (La parte crítica)
-                    fecha_str = item.get("fecha")
-                    fecha_final = datetime.now() # Valor por defecto si falla
-                    
-                    if fecha_str:
-                        try:
-                            # Intenta convertir el string "2026-01-01 13:16" a Objeto Datetime
-                            fecha_final = datetime.strptime(fecha_str, "%Y-%m-%d %H:%M")
-                        except ValueError:
-                            try:
-                                # Intenta formato ISO por si acaso
-                                fecha_final = datetime.fromisoformat(fecha_str)
-                            except:
-                                print(f"⚠️ Fecha no reconocida: {fecha_str}, usando fecha actual.")
-                                fecha_final = datetime.now()
-
-                    txn = Transaction(
-                        tipo=item["tipo"],
-                        monto=float(item["monto"]),
-                        moneda=item["moneda"],
-                        categoria=item["categoria"],
-                        fecha=fecha_final  # <--- Aquí pasamos el OBJETO, no el string
-                    )
-                    session.add(txn)
-                    count += 1
-                print(f"-> {count} movimientos migrados correctamente.")
-
         # --- 2. MIGRAR ACTIVOS ---
         if os.path.exists("mis_activos.json"):
             with open("mis_activos.json", "r") as f:
