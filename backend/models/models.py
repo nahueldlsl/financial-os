@@ -23,6 +23,10 @@ class Asset(SQLModel, table=True):
     drip_enabled: bool = Field(default=False)
     fecha_inicio_drip: Optional[str] = None
     ultima_revision_div: Optional[str] = None
+    
+    # Caching para Performance
+    cached_price: Optional[float] = Field(default=None)
+    last_updated: Optional[datetime] = Field(default=None)
 
 # --- CAJA DEL BROKER (Dinero listo para invertir) ---
 class BrokerCash(SQLModel, table=True):

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  # --- SERVICIO BACKEND ---
+  backend:
+    build: ./backend
+    container_name: financial-backend
+    ports:
+      - "8000:8000" # Mapea puerto 8000 de tu PC al 8000 del contenedor
+    volumes:
+      - ./backend:/app # "Espejo": Si cambias código en tu PC, cambia en Docker
+      - /app/mi_entorno # Ignoramos tu entorno virtual local
+    restart: always
+
+  # --- SERVICIO FRONTEND ---
+  frontend:
+    build: ./frontend
+    container_name: financial-frontend
+    ports:
+      - "5173:5173" # Mapea puerto 5173 de tu PC al 5173 del contenedor
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Ignoramos tus node_modules locales
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend # Espera a que el backend arranque primero
