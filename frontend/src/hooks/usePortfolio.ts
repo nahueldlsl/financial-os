@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PortfolioResponse, BrokerCash, TradeAction, BrokerFund } from '../types';
 
-const API_URL = 'http://127.0.0.1:8000/api';
+// Antes tenías quizás esto fijo:
+// const API_URL = 'http://localhost:8000/api';
+
+// CAMBIAR A ESTO:
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = `${BASE_URL}/api`;
 
 export function usePortfolio() {
     const [data, setData] = useState<PortfolioResponse | null>(null);
