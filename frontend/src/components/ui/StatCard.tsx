@@ -1,5 +1,4 @@
 import React from 'react';
-import type { LucideIcon } from 'lucide-react';
 
 interface Props {
     title: string;

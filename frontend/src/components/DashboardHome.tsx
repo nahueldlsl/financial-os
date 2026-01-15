@@ -11,7 +11,6 @@ import {
     Wallet,
     TrendingUp,
     Bitcoin,
-    DollarSign,
     ArrowUpRight,
     ArrowDownRight,
     Activity,

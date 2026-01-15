@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom'; // Asegúrate de tener react-router-dom instalado
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { BalanceCard } from '../components/BalanceCard';

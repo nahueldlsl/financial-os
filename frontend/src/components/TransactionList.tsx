@@ -1,4 +1,5 @@
 import React from 'react';
+// Transaction List Component
 import { PlusCircle, MinusCircle, DollarSign } from 'lucide-react';
 import type { Movimiento } from '../types';
 

@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X, ArrowRightLeft } from 'lucide-react';
 import type { BrokerFund } from '../../types';
 
-interface Props {
+export interface CashModalProps {
     isOpen: boolean;
     onClose: () => void;
     currentBalance: number;
     onSubmit: (fund: BrokerFund) => Promise<boolean>;
 }
 
-export const CashModal: React.FC<Props> = ({ isOpen, onClose, currentBalance, onSubmit }) => {
+export const CashModal: React.FC<CashModalProps> = ({ isOpen, onClose, currentBalance, onSubmit }) => {
     const [enviado, setEnviado] = useState('');
     const [recibido, setRecibido] = useState('');
     const [tipo, setTipo] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
@@ -41,6 +41,11 @@ export const CashModal: React.FC<Props> = ({ isOpen, onClose, currentBalance, on
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-white">Gestión de Caja</h3>
                     <button onClick={onClose}><X className="text-slate-400 hover:text-white" /></button>
+                </div>
+
+                <div className="mb-6 p-4 bg-slate-800/50 rounded-xl flex justify-between items-center">
+                    <span className="text-slate-400 text-sm">Saldo Disponible</span>
+                    <span className="text-emerald-400 font-bold text-lg">${currentBalance.toLocaleString()}</span>
                 </div>
 
                 {/* Switch Tipo */}
