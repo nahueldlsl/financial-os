@@ -44,5 +44,4 @@ Sigue estos pasos para ejecutar la aplicación en tu máquina local usando tu pr
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone [https://github.com/TU_USUARIO/financial-os.git](https://github.com/TU_USUARIO/financial-os.git)
-cd financial-os
+git clone https://github.com/nahueldlsl/financial-os.git
