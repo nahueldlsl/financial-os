@@ -6,7 +6,12 @@ import { TransactionForm } from '../components/TransactionForm';
 import { TransactionList } from '../components/TransactionList.tsx';
 import type { Movimiento, DolarResponse } from '../types';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+// Antes tenías quizás esto fijo:
+// const API_URL = 'http://localhost:8000/api';
+
+// CAMBIAR A ESTO:
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = `${BASE_URL}/api`;
 
 export default function CashFlow() {
     // Estado
