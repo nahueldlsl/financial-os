@@ -1,27 +1,51 @@
 version: '3.8'
 
 services:
-  # --- SERVICIO BACKEND ---
+  # --- 1. BASE DE DATOS (POSTGRESQL) ---
+  db:
+    image: postgres:15-alpine
+    container_name: financial-db
+    restart: always
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=financial_db
+    # ESTO ES LA CLAVE DE LA PERSISTENCIA:
+    # Guardamos los datos en un volumen de Docker, no dentro del contenedor.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Opcional: para que puedas ver la DB desde tu PC
+
+  # --- 2. BACKEND ---
   backend:
     build: ./backend
     container_name: financial-backend
     ports:
-      - "8000:8000" # Mapea puerto 8000 de tu PC al 8000 del contenedor
+      - "8000:8000"
     volumes:
-      - ./backend:/app # "Espejo": Si cambias código en tu PC, cambia en Docker
-      - /app/mi_entorno # Ignoramos tu entorno virtual local
-    restart: always
+      - ./backend:/app
+      - /app/mi_entorno
+    # AQUÍ CONECTAMOS EL BACKEND CON LA DB:
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - db # Espera a que la DB arranque
 
-  # --- SERVICIO FRONTEND ---
+  # --- 3. FRONTEND ---
   frontend:
     build: ./frontend
     container_name: financial-frontend
     ports:
-      - "5173:5173" # Mapea puerto 5173 de tu PC al 5173 del contenedor
+      - "5173:5173"
     volumes:
       - ./frontend:/app
-      - /app/node_modules # Ignoramos tus node_modules locales
+      - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:
-      - backend # Espera a que el backend arranque primero
+      - backend
+
+# Definimos el volumen persistente
+volumes:
+  postgres_data:

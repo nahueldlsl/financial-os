@@ -1,18 +1,24 @@
-# database.py
 from sqlmodel import SQLModel, create_engine, Session
-from typing import Generator
+import os # <--- Importante
 
-# Esto creará un archivo 'financial.db' que es tu base de datos real
-SQLITE_FILE_NAME = "financial.db"
-sqlite_url = f"sqlite:///{SQLITE_FILE_NAME}"
+# 1. Buscamos la URL en las variables de entorno (Configuración de Docker)
+# Si no existe, usamos SQLite (Configuración local de respaldo)
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///financial.db")
 
-# connect_args es necesario solo para SQLite
-engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+# 2. Configuración del Engine
+if "sqlite" in DATABASE_URL:
+    # Configuración específica para SQLite
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={"check_same_thread": False}
+    )
+else:
+    # Configuración para PostgreSQL
+    engine = create_engine(DATABASE_URL)
+
+def get_session():
+    with Session(engine) as session:
+        yield session
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
-
-# Dependencia para usar en tus endpoints
-def get_session() -> Generator[Session, None, None]:
-    with Session(engine) as session:
-        yield session
