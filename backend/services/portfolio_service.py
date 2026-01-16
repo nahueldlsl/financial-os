@@ -120,8 +120,8 @@ class PortfolioService:
         return cash
 
     @staticmethod
-    def execute_buy(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, fecha: Optional[datetime] = None):
-        total_costo = cantidad * precio
+    def execute_buy(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, applied_fee: float = 0.0, fecha: Optional[datetime] = None):
+        total_costo = (cantidad * precio) + applied_fee
         
         # 1. Verificar Caja
         if usar_caja_broker:
@@ -158,6 +158,7 @@ class PortfolioService:
             cantidad=cantidad,
             precio=precio,
             total=total_costo,
+            commission=applied_fee,
             fecha=fecha or datetime.now()
         )
         session.add(hist)
@@ -166,17 +167,18 @@ class PortfolioService:
         return {"mensaje": "Compra exitosa", "nuevo_promedio": asset.precio_promedio}
 
     @staticmethod
-    def execute_sell(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, fecha: Optional[datetime] = None):
+    def execute_sell(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, applied_fee: float = 0.0, fecha: Optional[datetime] = None):
         # 1. Verificar si tenemos la acción
         asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
         if not asset or asset.cantidad_total < cantidad:
             raise HTTPException(status_code=400, detail="No tienes suficientes acciones para vender")
 
-        total_venta = cantidad * precio
+        total_venta_bruta = cantidad * precio
+        total_venta_neta = total_venta_bruta - applied_fee
         
         # 2. Calcular Ganancia Realizada
         costo_proporcional = cantidad * asset.precio_promedio
-        ganancia = total_venta - costo_proporcional
+        ganancia = total_venta_neta - costo_proporcional
 
         # 3. Actualizar Activo
         asset.cantidad_total -= cantidad
@@ -189,7 +191,7 @@ class PortfolioService:
         # 4. Actualizar Caja Broker
         if usar_caja_broker:
             cash = PortfolioService.get_or_create_broker_cash(session)
-            cash.saldo_usd += total_venta
+            cash.saldo_usd += total_venta_neta
             session.add(cash)
 
         # 5. Guardar Historial
@@ -198,8 +200,9 @@ class PortfolioService:
             tipo="SELL",
             cantidad=cantidad,
             precio=precio,
-            total=total_venta,
+            total=total_venta_neta,
             ganancia_realizada=ganancia,
+            commission=applied_fee,
             fecha=fecha or datetime.now()
         )
         session.add(hist)

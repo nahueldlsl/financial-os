@@ -10,6 +10,11 @@ interface Props {
     currentPrice?: number;
 }
 
+interface BrokerSettings {
+    default_fee_integer: number;
+    default_fee_fractional: number;
+}
+
 export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initialTicker = '', currentPrice = 0 }) => {
     const [mode, setMode] = useState<'buy' | 'sell'>('buy');
     const [ticker, setTicker] = useState(initialTicker);
@@ -17,6 +22,12 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
     const [precio, setPrecio] = useState(currentPrice.toString());
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]); // Hoy YYYY-MM-DD
     const [usarCaja, setUsarCaja] = useState(true);
+
+    // Fee Logic
+    const [fee, setFee] = useState<string>('');
+    const [manualFee, setManualFee] = useState(false); // Flag para saber si el usuario tocó
+    const [settings, setSettings] = useState<BrokerSettings | null>(null);
+
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -24,9 +35,34 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
             setTicker(initialTicker);
             setPrecio(currentPrice > 0 ? currentPrice.toString() : '');
             setCantidad('');
+            setFee('');
+            setManualFee(false);
             setMode('buy');
+
+            // Cargar settings globales
+            fetch('http://127.0.0.1:8000/api/settings/')
+                .then(res => res.json())
+                .then(data => setSettings(data))
+                .catch(err => console.error("Error loading settings in modal", err));
         }
     }, [isOpen, initialTicker, currentPrice]);
+
+    // Auto-fill Fee logic
+    useEffect(() => {
+        if (!settings || manualFee) return;
+
+        const qty = parseFloat(cantidad);
+        if (isNaN(qty) || qty <= 0) {
+            setFee('');
+            return;
+        }
+
+        const isInteger = Number.isInteger(qty);
+        // Si es entero -> integerFee, si es float -> fractionalFee
+        const autoFee = isInteger ? settings.default_fee_integer : settings.default_fee_fractional;
+        setFee(autoFee.toString());
+
+    }, [cantidad, settings, manualFee]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,7 +76,8 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
             cantidad: parseFloat(cantidad),
             precio: parseFloat(precio),
             fecha: fechaISO,
-            usar_caja_broker: usarCaja
+            usar_caja_broker: usarCaja,
+            applied_fee: parseFloat(fee || '0')
         });
 
         setIsSubmitting(false);
@@ -112,6 +149,27 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                         </div>
                     </div>
 
+                    {/* Commission Fee */}
+                    <div>
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs text-slate-400 font-bold uppercase tracking-wider">Comisión Broker</label>
+                            {!manualFee && fee !== '' && <span className="text-[10px] text-indigo-400">Autocompletado</span>}
+                        </div>
+                        <div className="relative">
+                            <span className="absolute left-3 top-3 text-slate-500">$</span>
+                            <input
+                                type="number" step="any"
+                                className={`w-full bg-slate-950 border rounded-lg p-3 pl-7 text-white font-mono focus:border-indigo-500 outline-none ${manualFee ? 'border-amber-500/50' : 'border-slate-800'}`}
+                                placeholder="0.00"
+                                value={fee}
+                                onChange={e => {
+                                    setFee(e.target.value);
+                                    setManualFee(true);
+                                }}
+                            />
+                        </div>
+                    </div>
+
                     {/* Fecha de Operación (Para historial y precio promedio) */}
                     <div>
                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1 block flex items-center gap-2">
@@ -141,9 +199,9 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
 
                     {/* Total Estimado */}
                     <div className="text-center py-2">
-                        <p className="text-slate-500 text-sm">Total Operación</p>
+                        <p className="text-slate-500 text-sm">Total Estimado {mode === 'buy' ? '(Costo)' : '(Recibo)'}</p>
                         <p className="text-2xl font-bold text-white">
-                            ${(parseFloat(cantidad || '0') * parseFloat(precio || '0')).toLocaleString()}
+                            ${((parseFloat(cantidad || '0') * parseFloat(precio || '0')) + (mode === 'buy' ? 1 : -1) * parseFloat(fee || '0')).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
 
@@ -151,8 +209,8 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                         type="submit"
                         disabled={isSubmitting}
                         className={`w-full py-3 rounded-lg font-bold text-white transition-all ${mode === 'buy'
-                                ? 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20'
-                                : 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-500/20'
+                            ? 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20'
+                            : 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-500/20'
                             }`}
                     >
                         {isSubmitting ? 'Procesando...' : (mode === 'buy' ? 'CONFIRMAR COMPRA' : 'CONFIRMAR VENTA')}

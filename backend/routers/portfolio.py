@@ -17,6 +17,7 @@ class TradeAction(BaseModel):
     cantidad: float
     precio: float
     fecha: Optional[datetime] = None
+    applied_fee: float = 0.0
     usar_caja_broker: bool = True # Si True, descuenta/suma al saldo del broker
 
 class BrokerFund(BaseModel):
@@ -121,95 +122,44 @@ def fund_broker(fund: BrokerFund, session: Session = Depends(get_session)):
 # --- OPERACIONES DE TRADING (BUY / SELL) ---
 @router.post("/trade/buy")
 def comprar_accion(trade: TradeAction, session: Session = Depends(get_session)):
-    # 1. Verificar Caja (si aplica)
-    total_costo = trade.cantidad * trade.precio
-    if trade.usar_caja_broker:
-        cash = get_or_create_broker_cash(session)
-        if cash.saldo_usd < total_costo:
-            raise HTTPException(status_code=400, detail=f"Saldo insuficiente. Tienes ${cash.saldo_usd:.2f}")
-        cash.saldo_usd -= total_costo
-        session.add(cash)
-
-    # 2. Actualizar o Crear Activo (Lógica de Promedio Ponderado)
-    asset = session.exec(select(Asset).where(Asset.ticker == trade.ticker)).first()
-    
-    if not asset:
-        # Activo Nuevo
-        asset = Asset(
+    # Delegar lógica compleja al servicio
+    from services.portfolio_service import PortfolioService
+    try:
+        resultado = PortfolioService.execute_buy(
+            session=session,
             ticker=trade.ticker,
-            cantidad_total=trade.cantidad,
-            precio_promedio=trade.precio,
-            drip_enabled=False
+            cantidad=trade.cantidad,
+            precio=trade.precio,
+            usar_caja_broker=trade.usar_caja_broker,
+            applied_fee=trade.applied_fee,
+            fecha=trade.fecha
         )
-    else:
-        # Activo Existente -> Recalcular Precio Promedio
-        costo_anterior = asset.cantidad_total * asset.precio_promedio
-        nuevo_costo = costo_anterior + total_costo
-        nueva_cantidad = asset.cantidad_total + trade.cantidad
-        
-        asset.cantidad_total = nueva_cantidad
-        asset.precio_promedio = nuevo_costo / nueva_cantidad if nueva_cantidad > 0 else 0
+        return resultado
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    session.add(asset)
-
-    # 3. Guardar en Historial
-    hist = TradeHistory(
-        ticker=trade.ticker,
-        tipo="BUY",
-        cantidad=trade.cantidad,
-        precio=trade.precio,
-        total=total_costo,
-        fecha=trade.fecha or datetime.now()
-    )
-    session.add(hist)
-    
-    session.commit()
-    return {"mensaje": "Compra exitosa", "nuevo_promedio": asset.precio_promedio}
 
 @router.post("/trade/sell")
 def vender_accion(trade: TradeAction, session: Session = Depends(get_session)):
-    # 1. Verificar si tenemos la acción
-    asset = session.exec(select(Asset).where(Asset.ticker == trade.ticker)).first()
-    if not asset or asset.cantidad_total < trade.cantidad:
-        raise HTTPException(status_code=400, detail="No tienes suficientes acciones para vender")
+    from services.portfolio_service import PortfolioService
+    try:
+        resultado = PortfolioService.execute_sell(
+            session=session,
+            ticker=trade.ticker,
+            cantidad=trade.cantidad,
+            precio=trade.precio,
+            usar_caja_broker=trade.usar_caja_broker,
+            applied_fee=trade.applied_fee,
+            fecha=trade.fecha
+        )
+        return resultado
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    total_venta = trade.cantidad * trade.precio
-    
-    # 2. Calcular Ganancia Realizada (Realized Gain)
-    # Asumimos reducción proporcional del costo base (Método Promedio)
-    costo_proporcional = trade.cantidad * asset.precio_promedio
-    ganancia = total_venta - costo_proporcional
-
-    # 3. Actualizar Activo
-    asset.cantidad_total -= trade.cantidad
-    
-    # Si vendemos todo, borramos el activo o lo dejamos en 0? Mejor dejar en 0 para historial
-    if asset.cantidad_total <= 0.00001:
-        asset.cantidad_total = 0
-        asset.precio_promedio = 0 # Reset
-    
-    session.add(asset)
-
-    # 4. Actualizar Caja Broker
-    if trade.usar_caja_broker:
-        cash = get_or_create_broker_cash(session)
-        cash.saldo_usd += total_venta
-        session.add(cash)
-
-    # 5. Guardar Historial
-    hist = TradeHistory(
-        ticker=trade.ticker,
-        tipo="SELL",
-        cantidad=trade.cantidad,
-        precio=trade.precio,
-        total=total_venta,
-        ganancia_realizada=ganancia,
-        fecha=trade.fecha or datetime.now()
-    )
-    session.add(hist)
-    
-    session.commit()
-    return {"mensaje": "Venta exitosa", "ganancia_realizada": ganancia}
 
 # --- GETTERS ---
 @router.get("/portfolio")
