@@ -28,6 +28,12 @@ class Asset(SQLModel, table=True):
     cached_price: Optional[float] = Field(default=None)
     last_updated: Optional[datetime] = Field(default=None)
 
+# --- CONFIGURACIÓN DE BROKER (Singleton) ---
+class BrokerSettings(SQLModel, table=True):
+    id: int = Field(default=1, primary_key=True)
+    default_fee_integer: float = Field(default=0.0)    # Costo por acción entera
+    default_fee_fractional: float = Field(default=0.0) # Costo por fracción
+
 # --- CAJA DEL BROKER (Dinero listo para invertir) ---
 class BrokerCash(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
@@ -45,3 +51,6 @@ class TradeHistory(SQLModel, table=True):
     
     # Solo para ventas: Cuánto ganaste/perdiste en esta operación específica
     ganancia_realizada: Optional[float] = None
+    
+    # Costo de la operación
+    commission: float = Field(default=0.0)

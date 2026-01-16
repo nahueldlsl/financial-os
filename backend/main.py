@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db_and_tables
-from routers import transactions, portfolio, dashboard
+from routers import transactions, portfolio, dashboard, settings
 
 app = FastAPI(title="Financial OS Backend")
 
@@ -22,6 +22,7 @@ def on_startup():
 app.include_router(transactions.router)
 app.include_router(portfolio.router)
 app.include_router(dashboard.router)
+app.include_router(settings.router)
 
 if __name__ == "__main__":
     import uvicorn

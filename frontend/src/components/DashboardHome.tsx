@@ -21,6 +21,8 @@ import {
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { DashboardData, Asset } from '../types'; // Importamos tipos reales
+import { SettingsModal } from './SettingsModal';
+import { Settings } from 'lucide-react';
 
 // --- Utility ---
 function cn(...inputs: ClassValue[]) {
@@ -97,6 +99,7 @@ export default function DashboardHome() {
     const [timeRange, setTimeRange] = useState('1M');
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     // --- Fetch Data ---
     useEffect(() => {
@@ -160,7 +163,7 @@ export default function DashboardHome() {
                         </div>
                     </div>
 
-                    <div className="flex gap-1.5 bg-slate-900 p-1.5 rounded-full border border-slate-800">
+                    <div className="flex gap-1.5 bg-slate-900 p-1.5 rounded-full border border-slate-800 items-center">
                         {filters.map(f => (
                             <FilterButton
                                 key={f}
@@ -169,8 +172,17 @@ export default function DashboardHome() {
                                 onClick={() => setTimeRange(f)}
                             />
                         ))}
+                        <button
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="p-1 px-2 text-slate-400 hover:text-white transition-colors"
+                            title="Configurar Broker"
+                        >
+                            <Settings size={18} />
+                        </button>
                     </div>
                 </header>
+
+                <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
                 {/* Bento Grid Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

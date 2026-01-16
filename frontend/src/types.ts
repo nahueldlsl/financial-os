@@ -49,6 +49,7 @@ export interface TradeAction {
     precio: number;
     fecha?: string; // ISO String
     usar_caja_broker: boolean;
+    applied_fee?: number;
 }
 
 export interface BrokerFund {
