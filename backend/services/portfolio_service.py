@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Dict
 from sqlmodel import Session, select
+from sqlalchemy import func, case
 import math
 from fastapi import HTTPException
 
@@ -37,17 +38,35 @@ class PortfolioService:
         # 1. Cotización Dólar
         dolar_val = PortfolioService.get_dolar_price()
 
-        # 2. Efectivo Billetera (Cash Flow)
-        movimientos = session.exec(select(Transaction)).all()
-        total_wallet_usd = 0.0
-        total_wallet_uyu = 0.0
+        # 2. Efectivo Billetera (Cash Flow) - OPTIMIZADO CON SQL
+        # Usamos CASE para sumar condicionalmente en BD
+        # total_wallet_usd = SUM(CASE WHEN moneda='USD' THEN (CASE WHEN tipo='gasto' THEN -monto ELSE monto END) ELSE 0 END)
+        # total_wallet_uyu = SUM(CASE WHEN moneda!='USD' THEN (CASE WHEN tipo='gasto' THEN -monto ELSE monto END) ELSE 0 END)
+        
+        statement = select(
+            func.sum(
+                case(
+                    (Transaction.moneda == 'USD', 
+                     case((Transaction.tipo == 'gasto', -Transaction.monto), else_=Transaction.monto)
+                    ), 
+                    else_=0.0
+                )
+            ).label("total_usd"),
+            func.sum(
+                case(
+                    (Transaction.moneda != 'USD', 
+                     case((Transaction.tipo == 'gasto', -Transaction.monto), else_=Transaction.monto)
+                    ), 
+                    else_=0.0
+                )
+            ).label("total_uyu")
+        )
 
-        for m in movimientos:
-            monto = safe_float(m.monto)
-            if m.tipo == 'gasto': monto = -monto
-            
-            if m.moneda == 'USD': total_wallet_usd += monto
-            else: total_wallet_uyu += monto
+        result = session.exec(statement).one()
+        
+        # result puede traer None si no hay registros, así que usamos 'or 0.0'
+        total_wallet_usd = safe_float(result[0] if result[0] is not None else 0.0)
+        total_wallet_uyu = safe_float(result[1] if result[1] is not None else 0.0)
         
         wallet_equivalent = total_wallet_usd + (total_wallet_uyu / dolar_val if dolar_val > 0 else 0)
 

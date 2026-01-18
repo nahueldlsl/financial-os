@@ -1,74 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
 import type { TradeAction } from '../../types';
+import { useTradeCalculator, type BrokerSettings } from '../../hooks/useTradeCalculator';
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (type: 'buy' | 'sell', data: TradeAction) => Promise<boolean>;
-    initialTicker?: string; // Si venimos de clickear una carta
+    initialTicker?: string;
     currentPrice?: number;
 }
 
-interface BrokerSettings {
-    default_fee_integer: number;
-    default_fee_fractional: number;
-}
-
 export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initialTicker = '', currentPrice = 0 }) => {
-    const [mode, setMode] = useState<'buy' | 'sell'>('buy');
     const [ticker, setTicker] = useState(initialTicker);
-    const [cantidad, setCantidad] = useState('');
-    const [precio, setPrecio] = useState(currentPrice.toString());
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]); // Hoy YYYY-MM-DD
     const [usarCaja, setUsarCaja] = useState(true);
-
-    // Fee Logic
-    const [fee, setFee] = useState<string>('');
-    const [manualFee, setManualFee] = useState(false); // Flag para saber si el usuario tocó
     const [settings, setSettings] = useState<BrokerSettings | null>(null);
-
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Custom Hook
+    const {
+        cantidad, setCantidad,
+        precio, setPrecio,
+        fee, setFee,
+        manualFee, setManualFee,
+        mode, setMode,
+        totalEstimado,
+        reset
+    } = useTradeCalculator(settings, currentPrice);
 
     useEffect(() => {
         if (isOpen) {
             setTicker(initialTicker);
-            setPrecio(currentPrice > 0 ? currentPrice.toString() : '');
-            setCantidad('');
-            setFee('');
-            setManualFee(false);
+            reset();
             setMode('buy');
+            // Re-setear precio si vino por props (el hook lo maneja en useEffect, pero el reset lo limpia)
+            if (currentPrice > 0) setPrecio(currentPrice.toString());
 
-            // Cargar settings globales
-            fetch('http://127.0.0.1:8000/api/settings/')
-                .then(res => res.json())
-                .then(data => setSettings(data))
-                .catch(err => console.error("Error loading settings in modal", err));
+            // Cargar settings globales si no existen
+            if (!settings) {
+                fetch('http://127.0.0.1:8000/api/settings/')
+                    .then(res => res.json())
+                    .then(data => setSettings(data))
+                    .catch(err => console.error("Error loading settings in modal", err));
+            }
         }
     }, [isOpen, initialTicker, currentPrice]);
-
-    // Auto-fill Fee logic
-    useEffect(() => {
-        if (!settings || manualFee) return;
-
-        const qty = parseFloat(cantidad);
-        if (isNaN(qty) || qty <= 0) {
-            setFee('');
-            return;
-        }
-
-        const isInteger = Number.isInteger(qty);
-        // Si es entero -> integerFee, si es float -> fractionalFee
-        const autoFee = isInteger ? settings.default_fee_integer : settings.default_fee_fractional;
-        setFee(autoFee.toString());
-
-    }, [cantidad, settings, manualFee]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
 
-        // Formatear fecha para backend (ISO con hora 00:00)
         const fechaISO = new Date(fecha).toISOString();
 
         const success = await onSubmit(mode, {
@@ -170,7 +152,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                         </div>
                     </div>
 
-                    {/* Fecha de Operación (Para historial y precio promedio) */}
+                    {/* Fecha de Operación */}
                     <div>
                         <label className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1 block flex items-center gap-2">
                             <Calendar size={12} /> Fecha Operación
@@ -201,7 +183,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                     <div className="text-center py-2">
                         <p className="text-slate-500 text-sm">Total Estimado {mode === 'buy' ? '(Costo)' : '(Recibo)'}</p>
                         <p className="text-2xl font-bold text-white">
-                            ${((parseFloat(cantidad || '0') * parseFloat(precio || '0')) + (mode === 'buy' ? 1 : -1) * parseFloat(fee || '0')).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${totalEstimado.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
 
