@@ -25,26 +25,15 @@ class BrokerFund(BaseModel):
     monto_recibido: float
     tipo: str              # "DEPOSIT" | "WITHDRAW"
 # --- AUXILIARES ---
-def get_or_create_broker_cash(session: Session) -> BrokerCash:
-    cash = session.get(BrokerCash, 1)
-    if not cash:
-        cash = BrokerCash(id=1, saldo_usd=0.0)
-        session.add(cash)
-        session.commit()
-        session.refresh(cash)
-    return cash
+# Eliminadas funciones duplicadas (get_or_create_broker_cash, get_dolar_price) en favor de PortfolioService
 
-def get_dolar_price():
-    try:
-        resp = requests.get("https://uy.dolarapi.com/v1/cotizaciones/usd", timeout=3)
-        return float(resp.json().get('venta', 41.0))
-    except:
-        return 41.0
+# --- ENDPOINTS DE CAJA (BUYING POWER) ---
 
 # --- ENDPOINTS DE CAJA (BUYING POWER) ---
 @router.get("/broker/cash")
 def get_broker_cash(session: Session = Depends(get_session)):
-    cash = get_or_create_broker_cash(session)
+    from services.portfolio_service import PortfolioService
+    cash = PortfolioService.get_or_create_broker_cash(session)
     return {"saldo_usd": cash.saldo_usd}
 
 
@@ -54,7 +43,9 @@ def get_broker_cash(session: Session = Depends(get_session)):
 # 2. ACTUALIZAMOS LA LÓGICA DE FONDEO
 @router.post("/broker/fund")
 def fund_broker(fund: BrokerFund, session: Session = Depends(get_session)):
-    cash = get_or_create_broker_cash(session)
+    from services.portfolio_service import PortfolioService
+    # Usamos el servicio
+    cash = PortfolioService.get_or_create_broker_cash(session)
     
     comision = fund.monto_enviado - fund.monto_recibido
     
