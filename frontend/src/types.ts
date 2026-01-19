@@ -24,7 +24,7 @@ export interface Posicion {
     Costo_Base: number;       // Nuevo (Calculado en frontend o backend)
     Ganancia_USD: number;
     Rendimiento_Porc: number;
-    DRIP?: boolean;
+
 }
 
 export interface PortfolioResumen {
@@ -58,11 +58,7 @@ export interface BrokerFund {
     tipo: 'DEPOSIT' | 'WITHDRAW';
 }
 
-export interface DripResponse {
-    mensaje: string;
-    cambios: any[];
-    total_procesados: number;
-}
+
 
 
 

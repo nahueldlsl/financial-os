@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Wallet, Plus, Search } from 'lucide-react';
+import { ArrowLeft, Wallet, Plus, Search, FileJson } from 'lucide-react';
 
 // Asegúrate que el archivo se llame usePortfolio.ts (en inglés)
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AssetCard } from '../components/market/AssetCard';
 import { TradeModal } from '../components/market/TradeModal';
 import { CashModal } from '../components/market/CashModal';
+import { JsonImportModal } from '../components/market/JsonImportModal';
 
 // Usamos 'import type' para interfaces
 import type { Posicion } from '../types';
@@ -17,6 +18,7 @@ export default function MarketView() {
     // Estados Modales
     const [isTradeOpen, setTradeOpen] = useState(false);
     const [isCashOpen, setCashOpen] = useState(false);
+    const [isImportOpen, setImportOpen] = useState(false);
 
     // Estado Selección Activo
     const [selectedAsset, setSelectedAsset] = useState<{ ticker: string, price: number } | undefined>(undefined);
@@ -72,6 +74,13 @@ export default function MarketView() {
                         <p className="text-xl font-bold text-white">${cash.toLocaleString()}</p>
                     </div>
                     <div className="h-8 w-px bg-slate-800 mx-2" />
+                    <button
+                        onClick={() => setImportOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg text-sm font-bold transition mr-1"
+                        title="Importar JSON"
+                    >
+                        <FileJson size={18} />
+                    </button>
                     <button
                         onClick={() => handleOpenTrade()}
                         className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-bold transition"
@@ -134,6 +143,11 @@ export default function MarketView() {
                 onClose={() => setCashOpen(false)}
                 currentBalance={cash}
                 onSubmit={manageCash}
+            />
+
+            <JsonImportModal
+                isOpen={isImportOpen}
+                onClose={() => setImportOpen(false)}
             />
 
         </div>

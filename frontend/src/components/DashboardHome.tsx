@@ -23,6 +23,7 @@ import { twMerge } from 'tailwind-merge';
 import type { DashboardData, Asset } from '../types'; // Importamos tipos reales
 import { SettingsModal } from './SettingsModal';
 import { Settings } from 'lucide-react';
+import { formatCurrency } from '../utils/format';
 
 // --- Utility ---
 function cn(...inputs: ClassValue[]) {
@@ -76,7 +77,7 @@ const AssetRow = ({ asset, total }: { asset: Asset; total: number }) => {
             <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-1">
                     <span className="font-medium text-slate-200 truncate">{asset.name}</span>
-                    <span className="font-semibold text-slate-100">${asset.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                    <span className="font-semibold text-slate-100">{formatCurrency(asset.amount)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -95,6 +96,8 @@ const AssetRow = ({ asset, total }: { asset: Asset; total: number }) => {
 // Rename Pie import to avoid conflict
 const TopPie = Pie;
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function DashboardHome() {
     const [timeRange, setTimeRange] = useState('1M');
     const [data, setData] = useState<DashboardData | null>(null);
@@ -105,7 +108,8 @@ export default function DashboardHome() {
     useEffect(() => {
         const fetchDashboard = async () => {
             try {
-                const res = await fetch('http://127.0.0.1:8000/api/dashboard');
+                // Ensure race condition is minimized by backend fallback, but basic fetch here.
+                const res = await fetch(`${BASE_URL}/api/dashboard`);
                 if (res.ok) {
                     const result = await res.json();
                     setData(result);
@@ -149,7 +153,7 @@ export default function DashboardHome() {
                         <h2 className="text-slate-400 text-sm uppercase tracking-wider font-semibold">Net Worth Total</h2>
                         <div className="flex items-baseline gap-4">
                             <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tight">
-                                ${displayData.net_worth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                {formatCurrency(displayData.net_worth)}
                             </h1>
                             <div className={cn(
                                 "flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold",
@@ -157,7 +161,7 @@ export default function DashboardHome() {
                             )}>
                                 {displayData.performance.isPositive ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                                 <span>
-                                    ${Math.abs(displayData.performance.value).toLocaleString()} ({Math.abs(displayData.performance.percentage)}%)
+                                    {formatCurrency(Math.abs(displayData.performance.value))} ({Math.abs(displayData.performance.percentage)}%)
                                 </span>
                             </div>
                         </div>
@@ -215,8 +219,7 @@ export default function DashboardHome() {
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '12px', color: '#f1f5f9' }}
                                         itemStyle={{ color: '#e2e8f0' }}
-                                        // CAMBIA ESTA LÍNEA:
-                                        formatter={(value: number | undefined) => [`$${(value ?? 0).toLocaleString()}`, 'Valor']}
+                                        formatter={(value: number | undefined) => [formatCurrency(value ?? 0), 'Valor']}
                                     />
                                 </RechartsPieChart>
                             </ResponsiveContainer>

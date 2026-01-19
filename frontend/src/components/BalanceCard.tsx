@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCurrency } from '../utils/format';
 
 interface Props {
     balance: number;
@@ -19,7 +20,7 @@ export const BalanceCard: React.FC<Props> = ({ balance, isLoading }) => {
                     <span className="animate-pulse text-slate-500">---</span>
                 ) : (
                     <>
-                        ${displayBalance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {formatCurrency(displayBalance)}
                         <span className="text-lg text-indigo-300 mb-1">USD</span>
                     </>
                 )}

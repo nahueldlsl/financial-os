@@ -49,7 +49,7 @@ def migrate():
         try:
             # USAMOS SQL PURO PARA LEER SOLO LAS COLUMNAS QUE EXISTEN
             # Esto evita el error "no such column: cached_price"
-            query = text("SELECT ticker, cantidad_total, precio_promedio, drip_enabled, fecha_inicio_drip, ultima_revision_div FROM asset")
+            query = text("SELECT ticker, cantidad_total, precio_promedio FROM asset")
             results = src.connection().execute(query)
             
             count = 0
@@ -58,9 +58,7 @@ def migrate():
                     ticker=row.ticker,
                     cantidad_total=row.cantidad_total,
                     precio_promedio=row.precio_promedio,
-                    drip_enabled=bool(row.drip_enabled),
-                    fecha_inicio_drip=row.fecha_inicio_drip,
-                    ultima_revision_div=row.ultima_revision_div,
+
                     # Los campos nuevos los ponemos vacíos para Postgres
                     cached_price=None,
                     last_updated=None

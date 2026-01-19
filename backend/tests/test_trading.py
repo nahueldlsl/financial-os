@@ -7,14 +7,14 @@ def test_trade_buy_execution(client, session):
     - Aumenta cantidad de activo
     - Crea, historial
     """
-    # Setup: Fondear Broker con 1000 USD
-    session.add(BrokerCash(id=1, saldo_usd=1000.0))
+    # Setup: Fondear Broker con 1000 USD -> 100000 cents
+    session.add(BrokerCash(id=1, saldo_usd=100000))
     session.commit()
 
     payload = {
         "ticker": "TSLA",
         "cantidad": 2.0,
-        "precio": 200.0, # Costo total 400
+        "precio": 200.0, # Costo total 400.0 USD
         "usar_caja_broker": True
     }
 
@@ -22,9 +22,9 @@ def test_trade_buy_execution(client, session):
     
     assert response.status_code == 200
     
-    # Verificar Saldo Broker (1000 - 400 = 600)
+    # Verificar Saldo Broker (1000 - 400 = 600) -> 60000 cents
     broker = session.get(BrokerCash, 1)
-    assert broker.saldo_usd == 600.0
+    assert broker.saldo_usd == 60000
     
     # Verificar Activo Creado
     assets = session.query(Asset).all()
@@ -36,8 +36,8 @@ def test_fund_validation_insufficient_funds(client, session):
     """
     Verifica que NO se permita retirar más dinero del disponible.
     """
-    # Setup: Broker con 100 USD
-    session.add(BrokerCash(id=1, saldo_usd=100.0))
+    # Setup: Broker con 100 USD -> 10000 cents
+    session.add(BrokerCash(id=1, saldo_usd=10000))
     session.commit()
 
     payload = {
@@ -73,11 +73,11 @@ def test_fund_deposit_side_effect_transaction(client, session):
     
     # 1. Verificar saldo broker creció
     broker = session.get(BrokerCash, 1)
-    assert broker.saldo_usd == 1000.0
+    assert broker.saldo_usd == 100000 # Cents
     
     # 2. Verificar efecto secundario: Transacción creada
     txs = session.query(Transaction).all()
     assert len(txs) == 1
     assert txs[0].tipo == "gasto"
-    assert txs[0].monto == 1000.0
+    assert txs[0].monto == 100000 # Cents
     assert txs[0].categoria == "Transferencia a Broker"

@@ -19,18 +19,21 @@ def test_settings_defaults(client, session):
     response = client.post("/api/settings/", json=payload)
     assert response.status_code == 200
     
-    # 3. Verificar persistencia
+    # 3. Verificar persistencia (Stored as CENTS or Floats?)
+    # BrokerSettings default_fee_integer is INT in DB (cents) or still float?
+    # Let's check models.py... default_fee_integer: int.
+    # So 1.5 -> 150 cents.
     settings = session.get(BrokerSettings, 1)
-    assert settings.default_fee_integer == 1.5
-    assert settings.default_fee_fractional == 0.5
+    assert settings.default_fee_integer == 150
+    assert settings.default_fee_fractional == 50
 
 def test_buy_with_fee(client, session):
     """
     Verifica COMPRA con comisión aplicada manualmente.
     Costo Total = (Qty * Price) + Fee
     """
-    # Setup: Fondear Broker con 2000 USD
-    session.add(BrokerCash(id=1, saldo_usd=2000.0))
+    # Setup: Fondear Broker con 2000 USD -> 200000 cents
+    session.add(BrokerCash(id=1, saldo_usd=200000))
     session.commit()
 
     payload = {
@@ -46,15 +49,15 @@ def test_buy_with_fee(client, session):
     assert response.status_code == 200
 
     # Verificaciones
-    # 1. Saldo Broker: 2000 - (1500 + 2.5) = 497.5
+    # 1. Saldo Broker: 2000 - (1500 + 2.5) = 497.5 -> 49750 cents
     
     broker = session.get(BrokerCash, 1)
-    assert broker.saldo_usd == 497.5
+    assert broker.saldo_usd == 49750
 
-    # 2. Historial Guardado con Comisión
+    # 2. Historial Guardado con Comisión (CENTS)
     trade = session.query(TradeHistory).order_by(TradeHistory.id.desc()).first()
-    assert trade.commission == 2.5
-    assert trade.total == 1502.5
+    assert trade.commission == 250
+    assert trade.total == 150250
 
 def test_sell_with_fee(client, session):
     """
@@ -62,8 +65,9 @@ def test_sell_with_fee(client, session):
     Neto Recibido = (Qty * Price) - Fee
     """
     # Setup: Tener Activos y algo de saldo
-    session.add(BrokerCash(id=1, saldo_usd=0.0))
-    session.add(Asset(ticker="GOOGL", cantidad_total=5.0, precio_promedio=100.0))
+    session.add(BrokerCash(id=1, saldo_usd=0))
+    # Precio Promedio en Cents: 100.0 -> 10000
+    session.add(Asset(ticker="GOOGL", cantidad_total=5.0, precio_promedio=10000))
     session.commit()
 
     payload = {
@@ -77,12 +81,14 @@ def test_sell_with_fee(client, session):
     response = client.post("/api/trade/sell", json=payload)
     assert response.status_code == 200
 
-    # 1. Saldo Broker debe haber subido 995
+    # 1. Saldo Broker debe haber subido 995 -> 99500 cents
     broker = session.get(BrokerCash, 1)
-    assert broker.saldo_usd == 995.0
+    assert broker.saldo_usd == 99500
 
     # 2. Historial
     trade = session.query(TradeHistory).first()
-    assert trade.commission == 5.0
-    assert trade.total == 995.0 # Total registrado es el neto
-    assert trade.ganancia_realizada == (995.0 - (5.0 * 100.0)) # 995 - 500 = 495
+    assert trade.commission == 500
+    assert trade.total == 99500 # Total registrado es el neto
+    # Ganancia: (Precio Venta * Cantidad - Comision) - (Precio Compra * Cantidad)
+    # (20000 * 5) - 500 - (10000 * 5) = 100000 - 500 - 50000 = 49500
+    assert trade.ganancia_realizada == 49500
