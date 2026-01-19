@@ -7,7 +7,7 @@ from datetime import datetime
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tipo: str       # "ingreso" | "gasto"
-    monto: float
+    monto: int      # CENTS: 10050 = $100.50
     moneda: str     # "USD" | "UYU"
     categoria: str
     fecha: datetime = Field(default_factory=datetime.now)
@@ -16,28 +16,23 @@ class Transaction(SQLModel, table=True):
 class Asset(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     ticker: str = Field(index=True, unique=True)
-    cantidad_total: float
-    precio_promedio: float
-    
-    # Configuración DRIP
-    drip_enabled: bool = Field(default=False)
-    fecha_inicio_drip: Optional[str] = None
-    ultima_revision_div: Optional[str] = None
+    cantidad_total: float      # FLOAT: Cantidad de acciones (puede ser fraccional)
+    precio_promedio: int       # CENTS: Precio promedio de compra
     
     # Caching para Performance
-    cached_price: Optional[float] = Field(default=None)
+    cached_price: Optional[int] = Field(default=None) # CENTS: Precio actual de mercado
     last_updated: Optional[datetime] = Field(default=None)
 
 # --- CONFIGURACIÓN DE BROKER (Singleton) ---
 class BrokerSettings(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
-    default_fee_integer: float = Field(default=0.0)    # Costo por acción entera
-    default_fee_fractional: float = Field(default=0.0) # Costo por fracción
+    default_fee_integer: int = Field(default=0)    # CENTS: Costo por acción entera
+    default_fee_fractional: int = Field(default=0) # CENTS: Costo por fracción
 
 # --- CAJA DEL BROKER (Dinero listo para invertir) ---
 class BrokerCash(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
-    saldo_usd: float = Field(default=0.0)
+    saldo_usd: int = Field(default=0) # CENTS
 
 # --- HISTORIAL DE TRADING (Compras y Ventas) ---
 class TradeHistory(SQLModel, table=True):
@@ -45,12 +40,12 @@ class TradeHistory(SQLModel, table=True):
     ticker: str
     tipo: str       # "BUY" | "SELL" | "DIVIDEND" | "DEPOSIT" | "WITHDRAW"
     cantidad: float # Positivo
-    precio: float   # Precio al que se ejecutó
-    total: float    # cantidad * precio
+    precio: int     # CENTS: Precio al que se ejecutó
+    total: int      # CENTS: cantidad * precio
     fecha: datetime = Field(default_factory=datetime.now)
     
     # Solo para ventas: Cuánto ganaste/perdiste en esta operación específica
-    ganancia_realizada: Optional[float] = None
+    ganancia_realizada: Optional[int] = None # CENTS
     
     # Costo de la operación
-    commission: float = Field(default=0.0)
+    commission: int = Field(default=0) # CENTS

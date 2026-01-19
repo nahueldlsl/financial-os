@@ -20,26 +20,28 @@ def test_dashboard_net_worth_calculation(client, session):
     """
     # 1. Seeding (Datos de Prueba)
     
-    # Activo: 10 acciones de AAPL (Precio promedio irrelevante para valor actual, pero seteamos 150)
-    asset = Asset(ticker="AAPL", cantidad_total=10.0, precio_promedio=150.0)
+    # Activo: 10 acciones de AAPL 
+    # Precio Promedio en CENTAVOS: 150.00 -> 15000
+    asset = Asset(ticker="AAPL", cantidad_total=10.0, precio_promedio=15000)
     session.add(asset)
     
     # Transacción (Cash Flow): Ingreso de 1000 USD (banco)
-    tx = Transaction(tipo="ingreso", monto=1000.0, moneda="USD", categoria="Sueldo")
+    # Monto en CENTAVOS: 1000.00 -> 100000
+    tx = Transaction(tipo="ingreso", monto=100000, moneda="USD", categoria="Sueldo")
     session.add(tx)
     
     # Saldo Broker: 500 USD sin invertir
-    broker = BrokerCash(id=1, saldo_usd=500.0)
+    # Saldo en CENTAVOS: 500.00 -> 50000
+    broker = BrokerCash(id=1, saldo_usd=50000)
     session.add(broker)
     
     session.commit()
 
     # 2. Mocking Market Data
     # Simulamos que AAPL vale $200 hoy.
-    # El path debe ser donde se IMPORTA MarketDataService en el router, o la clase misma.
-    # Dado que el router usa dashboard.MarketDataService (importado), mockeamos la clase.
+    # El servicio espera enteros (centavos): 200.00 -> 20000
     with patch("services.portfolio_service.MarketDataService.get_market_prices") as mock_prices:
-        mock_prices.return_value = {"AAPL": 200.0}
+        mock_prices.return_value = {"AAPL": 20000}
         
         # 3. Execution
         response = client.get("/api/dashboard")
@@ -48,11 +50,11 @@ def test_dashboard_net_worth_calculation(client, session):
     assert response.status_code == 200
     data = response.json()
     
-    # Cálculo Esperado:
-    # Portafolio: 10 * 200 = 2000
-    # Cash Flow: 1000
-    # Broker Cash: 500
-    # Total = 3500
+    # Cálculo Esperado (API devuelve Floats):
+    # Portafolio: 10 * 200.00 = 2000.00
+    # Cash Flow: 1000.00
+    # Broker Cash: 500.00
+    # Total = 3500.00
     
     assert data["net_worth"] == 3500.0
     

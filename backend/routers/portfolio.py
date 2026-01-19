@@ -24,6 +24,9 @@ class BrokerFund(BaseModel):
     monto_enviado: float   # <--- Verifica que tengas estos dos nombres exactos
     monto_recibido: float
     tipo: str              # "DEPOSIT" | "WITHDRAW"
+
+class ImportRequest(BaseModel):
+    content: str
 # --- AUXILIARES ---
 # Eliminadas funciones duplicadas (get_or_create_broker_cash, get_dolar_price) en favor de PortfolioService
 
@@ -34,11 +37,8 @@ class BrokerFund(BaseModel):
 def get_broker_cash(session: Session = Depends(get_session)):
     from services.portfolio_service import PortfolioService
     cash = PortfolioService.get_or_create_broker_cash(session)
-    return {"saldo_usd": cash.saldo_usd}
-
-
-
-# ... (Endpoints de Cash y Dolar siguen igual) ...
+    # Return Dollars
+    return {"saldo_usd": cash.saldo_usd / 100.0}
 
 # 2. ACTUALIZAMOS LA LÓGICA DE FONDEO
 @router.post("/broker/fund")
@@ -47,17 +47,21 @@ def fund_broker(fund: BrokerFund, session: Session = Depends(get_session)):
     # Usamos el servicio
     cash = PortfolioService.get_or_create_broker_cash(session)
     
-    comision = fund.monto_enviado - fund.monto_recibido
+    # Inputs en Dólares (Float)
+    monto_enviado_cents = int(round(fund.monto_enviado * 100))
+    monto_recibido_cents = int(round(fund.monto_recibido * 100))
+    
+    comision_cents = monto_enviado_cents - monto_recibido_cents
     
     if fund.tipo == "DEPOSIT":
-        # Aumentamos saldo Broker
-        cash.saldo_usd += fund.monto_recibido
+        # Aumentamos saldo Broker (Cents)
+        cash.saldo_usd += monto_recibido_cents
         
         # REGISTRO AUTOMÁTICO EN CASH FLOW (Billetera Principal)
         # 1. El dinero que salió de la cuenta (Transferencia)
         gasto_transferencia = Transaction(
             tipo="gasto",
-            monto=fund.monto_recibido, # Registramos lo neto como transferencia
+            monto=monto_recibido_cents, # CENTS
             moneda="USD",
             categoria="Transferencia a Broker",
             fecha=datetime.now()
@@ -65,10 +69,10 @@ def fund_broker(fund: BrokerFund, session: Session = Depends(get_session)):
         session.add(gasto_transferencia)
 
         # 2. Si hubo comisión, la registramos aparte para tener control
-        if comision > 0:
+        if comision_cents > 0:
             gasto_comision = Transaction(
                 tipo="gasto",
-                monto=comision,
+                monto=comision_cents, # CENTS
                 moneda="USD",
                 categoria="Comisión Broker / Transferencia",
                 fecha=datetime.now()
@@ -76,39 +80,40 @@ def fund_broker(fund: BrokerFund, session: Session = Depends(get_session)):
             session.add(gasto_comision)
 
     elif fund.tipo == "WITHDRAW":
-        if cash.saldo_usd < fund.monto_enviado:
+        if cash.saldo_usd < monto_enviado_cents:
             raise HTTPException(status_code=400, detail="Saldo insuficiente en broker")
         
         # Restamos del Broker
-        cash.saldo_usd -= fund.monto_enviado # Aquí sale el total
+        cash.saldo_usd -= monto_enviado_cents # Aquí sale el total
         
         # Ingreso en Cash Flow (Banco)
         ingreso_banco = Transaction(
             tipo="ingreso",
-            monto=fund.monto_recibido, # Llega menos por comisión
+            monto=monto_recibido_cents, # Llega menos por comisión (CENTS)
             moneda="USD",
             categoria="Retiro desde Broker",
             fecha=datetime.now()
         )
         session.add(ingreso_banco)
 
-        if comision > 0:
+        if comision_cents > 0:
              # Opcional: Registrar la comisión de salida como gasto o simplemente registrar el ingreso neto
              pass 
 
     # Guardar Historial de Trading (Solo informativo)
+    # Convertimos a CENTS para historial
     hist = TradeHistory(
         ticker="CASH", 
         tipo=fund.tipo, 
         cantidad=1, 
-        precio=fund.monto_recibido, 
-        total=fund.monto_recibido
+        precio=monto_recibido_cents, # Cents
+        total=monto_recibido_cents    # Cents
     )
     session.add(hist)
     session.add(cash)
     session.commit()
     
-    return {"nuevo_saldo": cash.saldo_usd, "comision_registrada": comision}
+    return {"nuevo_saldo": cash.saldo_usd / 100.0, "comision_registrada": comision_cents / 100.0}
 
 # --- OPERACIONES DE TRADING (BUY / SELL) ---
 @router.post("/trade/buy")
@@ -152,6 +157,18 @@ def vender_accion(trade: TradeAction, session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/portfolio/import")
+def import_snapshot(request: ImportRequest, session: Session = Depends(get_session)):
+    from services.import_service import ImportService
+    try:
+        result = ImportService.import_snapshot(session, request.content)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- GETTERS ---
 @router.get("/portfolio")
 def obtener_portafolio(session: Session = Depends(get_session)):
@@ -168,6 +185,10 @@ def obtener_portafolio(session: Session = Depends(get_session)):
     data = [asset.dict() for asset in activos_db]
     df = pd.DataFrame(data)
     
+    # CONVERTIR CENTS A DOLLARS para cálculos de visualización
+    # precio_promedio viene en Cents desde DB
+    df['precio_promedio'] = df['precio_promedio'] / 100.0
+
     lista_tickers = df['ticker'].unique().tolist()
     precios_actuales = pd.Series()
     
@@ -185,7 +206,10 @@ def obtener_portafolio(session: Session = Depends(get_session)):
 
     df['Precio_Actual'] = df['ticker'].apply(get_precio_live).fillna(0)
     df['Valor_Mercado'] = df['cantidad_total'] * df['Precio_Actual']
+    
+    # Costo Base (Dollars) = Cantidad * PrecioPromedio(Dollars)
     df['Costo_Base'] = df['cantidad_total'] * df['precio_promedio']
+    
     df['Ganancia_USD'] = df['Valor_Mercado'] - df['Costo_Base']
     df['Rendimiento_Porc'] = df.apply(lambda x: (x['Ganancia_USD'] / x['Costo_Base'] * 100) if x['Costo_Base'] > 0 else 0, axis=1)
 
@@ -204,7 +228,7 @@ def obtener_portafolio(session: Session = Depends(get_session)):
             "Valor_Mercado": round(float(row['Valor_Mercado']), 2),
             "Ganancia_USD": round(float(row['Ganancia_USD']), 2),
             "Rendimiento_Porc": round(float(row['Rendimiento_Porc']), 2),
-            "DRIP": row['drip_enabled']
+
         })
 
     return {
@@ -218,69 +242,24 @@ def obtener_portafolio(session: Session = Depends(get_session)):
 
 @router.get("/trade/history")
 def get_history(session: Session = Depends(get_session)):
-    return session.exec(select(TradeHistory).order_by(TradeHistory.fecha.desc())).all()
+    hist = session.exec(select(TradeHistory).order_by(TradeHistory.fecha.desc())).all()
+    # Convert cents back to dollars for display
+    # This might be slow if list is huge, but safe for MVP.
+    # Alternatively, frontend handles formatting, but we promised to return dollars.
+    # Better to do this in SQL or Pydantic, but manual is explicit.
+    res = []
+    for h in hist:
+        d = h.dict()
+        d['precio'] = h.precio / 100.0
+        d['total'] = h.total / 100.0
+        d['commission'] = h.commission / 100.0
+        if h.ganancia_realizada is not None:
+             d['ganancia_realizada'] = h.ganancia_realizada / 100.0
+        res.append(d)
+    return res
 
 
-@router.post("/procesar-drip")
-def procesar_drip(session: Session = Depends(get_session)):
-    # 1. Obtener activos con DRIP activado
-    activos = session.exec(select(Asset).where(Asset.drip_enabled == True)).all()
-    cambios = []
-    hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    FECHA_GLOBAL = "2025-12-23"
-
-    for asset in activos:
-        try:
-            # Lógica de fechas
-            fecha_inicio_str = asset.fecha_inicio_drip or FECHA_GLOBAL
-            fecha_inicio = datetime.strptime(fecha_inicio_str, "%Y-%m-%d")
-            
-            ultima_rev_str = asset.ultima_revision_div or fecha_inicio_str
-            ultima_rev = datetime.strptime(ultima_rev_str, "%Y-%m-%d")
-            
-            fecha_corte = max(fecha_inicio, ultima_rev)
-
-            # Yahoo Finance
-            ticker_data = yf.Ticker(asset.ticker)
-            dividends = ticker_data.dividends
-            if dividends.empty: continue
-            
-            dividends.index = dividends.index.tz_localize(None)
-            nuevos_divs = dividends[(dividends.index > fecha_corte) & (dividends.index <= hoy)]
-
-            if not nuevos_divs.empty:
-                for fecha_div, monto_por_accion in nuevos_divs.items():
-                    # Cálculos Financieros
-                    div_neto = (monto_por_accion * asset.cantidad_total) * 0.70 # 30% Tax
-                    
-                    historia = ticker_data.history(start=fecha_div, end=fecha_div + timedelta(days=5))
-                    if historia.empty: continue
-                    precio_reinversion = float(historia.iloc[0]['Close'])
-                    
-                    nuevas_acciones = div_neto / precio_reinversion
-                    
-                    # Actualizar Asset en Memoria
-                    costo_anterior = asset.cantidad_total * asset.precio_promedio
-                    nuevo_costo = costo_anterior + div_neto
-                    asset.cantidad_total += nuevas_acciones
-                    if asset.cantidad_total > 0:
-                        asset.precio_promedio = nuevo_costo / asset.cantidad_total
-                    
-                    cambios.append({
-                        "Ticker": asset.ticker,
-                        "Fecha": fecha_div.strftime("%Y-%m-%d"),
-                        "Nuevas": round(nuevas_acciones, 5)
-                    })
-                
-                # Actualizar fecha y guardar en DB
-                asset.ultima_revision_div = hoy.strftime("%Y-%m-%d")
-                session.add(asset) # Marcar para guardar
-                
-        except Exception as e:
-            print(f"Error DRIP en {asset.ticker}: {e}")
-
-    session.commit() # Guardar todos los cambios
-    return {"mensaje": "DRIP procesado", "total_procesados": len(cambios), "cambios": cambios} 
+ 
 
 # --- ENDPOINT PÚBLICO COTIZACIÓN (Recuperado) ---
 @router.get("/dolar-uy")

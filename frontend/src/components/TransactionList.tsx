@@ -2,6 +2,7 @@ import React from 'react';
 // Transaction List Component
 import { PlusCircle, MinusCircle, DollarSign } from 'lucide-react';
 import type { Movimiento } from '../types';
+import { formatCurrency } from '../utils/format';
 
 interface Props {
     movimientos: Movimiento[];
@@ -41,11 +42,16 @@ export const TransactionList: React.FC<Props> = ({ movimientos, exchangeRate }) 
                             </div>
                             <div className="text-right">
                                 <p className={`font-mono font-bold text-sm ${m.tipo === 'ingreso' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {m.tipo === 'ingreso' ? '+' : '-'}${m.monto.toLocaleString()} <span className="text-xs text-slate-500">{m.moneda}</span>
+                                    {m.tipo === 'ingreso' ? '+' : '-'}
+                                    {m.moneda === 'USD'
+                                        ? formatCurrency(m.monto).replace('$', '') // Remove $ to avoid double symbol if we want, or just use formatCurrency
+                                        : m.monto.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                    }
+                                    <span className="text-xs text-slate-500 ml-1">{m.moneda === 'USD' ? '$' : m.moneda}</span>
                                 </p>
                                 {estimadoUSD && (
                                     <p className="text-[10px] text-slate-600 font-mono mt-0.5">
-                                        ≈ ${estimadoUSD.toFixed(2)} USD
+                                        ≈ {formatCurrency(estimadoUSD)}
                                     </p>
                                 )}
                             </div>

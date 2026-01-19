@@ -16,7 +16,6 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432" # Opcional: para que puedas ver la DB desde tu PC
-
   # --- 2. BACKEND ---
   backend:
     build: ./backend
@@ -31,6 +30,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - db # Espera a que la DB arranque
+    restart: on-failure # <--- AGREGA ESTO
 
   # --- 3. FRONTEND ---
   frontend:

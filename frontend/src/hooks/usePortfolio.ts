@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PortfolioResponse, BrokerCash, TradeAction, BrokerFund } from '../types';
 
-// Antes tenías quizás esto fijo:
-// const API_URL = 'http://localhost:8000/api';
-
-// CAMBIAR A ESTO:
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_URL = `${BASE_URL}/api`;
 
@@ -17,20 +13,38 @@ export function usePortfolio() {
     // Cargar Portafolio y Caja
     const fetchAll = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
-            const [resPort, resCash] = await Promise.all([
+            // Usamos allSettled para que un fallo en cash no rompa el portfolio y viceversa
+            const results = await Promise.allSettled([
                 fetch(`${API_URL}/portfolio`),
                 fetch(`${API_URL}/broker/cash`)
             ]);
 
-            if (resPort.ok) {
-                const result = await resPort.json();
+            const [resPort, resCash] = results;
+
+            // Procesar Portfolio
+            if (resPort.status === 'fulfilled' && resPort.value.ok) {
+                const result = await resPort.value.json();
                 setData(result);
+            } else if (resPort.status === 'rejected' || (resPort.status === 'fulfilled' && !resPort.value.ok)) {
+                console.error("Error fetching portfolio");
+                // Podríamos setear un error específico, pero dejamos pasar si cash funcionó
             }
-            if (resCash.ok) {
-                const cashResult: BrokerCash = await resCash.json();
+
+            // Procesar Cash
+            if (resCash.status === 'fulfilled' && resCash.value.ok) {
+                const cashResult: BrokerCash = await resCash.value.json();
                 setCash(cashResult.saldo_usd);
+            } else {
+                console.error("Error fetching cash");
             }
+
+            // Si ambos fallaron
+            if (resPort.status === 'rejected' && resCash.status === 'rejected') {
+                setError("No se pudo conectar con el servidor.");
+            }
+
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -38,7 +52,10 @@ export function usePortfolio() {
         }
     }, []);
 
-    useEffect(() => { fetchAll(); }, [fetchAll]);
+    // Ejecutar al montar
+    useEffect(() => {
+        fetchAll();
+    }, [fetchAll]);
 
     // Ejecutar Operación (Compra/Venta)
     const executeTrade = async (type: 'buy' | 'sell', trade: TradeAction) => {
