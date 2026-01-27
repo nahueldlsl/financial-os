@@ -50,14 +50,18 @@ class ImportService:
         
         from services.market_service import MarketDataService
 
+        from models.models import TradeHistory
+        from services.portfolio_service import PortfolioService
+        from datetime import datetime
+
         for item in data:
-            # 1. Validar claves (Case Sensitive Mapping)
+            # 1. Validar claves
             ticker = item.get("Ticker")
             cantidad = item.get("Cantidad_Total")
             precio_promedio_float = item.get("Precio_Promedio")
 
             if not ticker or cantidad is None or precio_promedio_float is None:
-                continue # Skip invalid rows
+                continue
 
             # Normalizar ticker
             ticker_normalized = str(ticker).strip().upper()
@@ -65,40 +69,43 @@ class ImportService:
             # 2. Conversión de Tipos
             precio_promedio_cents = int(round(precio_promedio_float * 100))
             cantidad_float = float(cantidad)
-
-            # 3. POO - Upsert Asset
-            statement = select(Asset).where(Asset.ticker == ticker_normalized)
-            asset = session.exec(statement).first()
-
-            if asset:
-                # Update
-                asset.cantidad_total = cantidad_float
-                asset.precio_promedio = precio_promedio_cents
-            else:
-                # Create
-                asset = Asset(
-                    ticker=ticker_normalized,
-                    cantidad_total=cantidad_float,
-                    precio_promedio=precio_promedio_cents
-                )
-                session.add(asset)
             
-            # Commit parcial (o flush) para asegurar que existe y tiene ID si fuera necesario
-            session.commit()
-            session.refresh(asset)
+            # CRÍTICO: No tocamos Asset directamente.
+            # Creamos una transacción "BUY" histórica base.
+            
+            # Calcular total (Costo Base Aproximado)
+            total_cents = int(round(cantidad_float * precio_promedio_cents))
 
-            # 4. Actualización de Precio de Mercado (CRÍTICO)
+            # Verificar si ya existe alguna historia para no duplicar en importaciones sucesivas?
+            # Por simplicidad del requerimiento "Event Replay", asumimos que es una importación
+            # o snapshot. Idealmente borraríamos historia previa si es un "Full Import".
+            # Pero agregaremos un flag o description para identificarlo.
+            
+            hist_entry = TradeHistory(
+                ticker=ticker_normalized,
+                tipo="BUY", # Tratamos el saldo inicial como una COMPRA
+                cantidad=cantidad_float,
+                precio=precio_promedio_cents,
+                total=total_cents,
+                commission=0,
+                fecha=datetime(2024, 1, 1), # Fecha base fija para ordenar al inicio
+                ganancia_realizada=0
+            )
+            
+            session.add(hist_entry)
+            session.commit() # Guardar historia
+            
+            # 3. TRIGGER EVENT REPLAY
+            PortfolioService.recalculate_asset_from_history(session, ticker_normalized)
+            
+            # 4. Actualizar Precio Mercado (Opcional, pero bueno para UX inmediata)
             try:
-                # Reutilizamos el servicio existente. Acepta lista, le pasamos [asset].
-                # Esto internamente descarga de Yahoo, actualiza cached_price y hace commit.
-                MarketDataService.get_market_prices(session, [asset])
-                
-                # Forzar refresco del objeto en memoria por si el servicio hizo cambios
-                session.refresh(asset) 
-                
-            except Exception as e:
-                print(f"Error obteniendo precio para {ticker_normalized}: {e}")
-                # No rompemos el loop, seguimos con el siguiente
+                # Buscamos el asset recién creado/actualizado por el Replay
+                asset = session.exec(select(Asset).where(Asset.ticker == ticker_normalized)).first()
+                if asset:
+                    MarketDataService.get_market_prices(session, [asset])
+            except Exception:
+                pass
             
             processed_count += 1
         
