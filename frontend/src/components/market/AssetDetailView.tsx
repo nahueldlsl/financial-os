@@ -11,7 +11,7 @@ interface AssetDetailViewProps {
 }
 
 const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, currentAvgPrice, onOpenTrade }) => {
-    const [chartData, setChartData] = useState([]);
+    const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
     const [history, setHistory] = useState<TradeHistoryItem[]>([]);
     const [range, setRange] = useState('1M');
     const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
         setLoading(true);
         try {
             // 1. Chart Data
-            const chartRes = await fetch(`http://localhost:8000/api/market/chart?ticker=${ticker}&range=${range}`);
+            const chartRes = await fetch(`http://localhost:8000/api/market/history/${ticker}?period=${range}`);
             const chartJson = await chartRes.json();
             if (chartJson.data) setChartData(chartJson.data);
 
