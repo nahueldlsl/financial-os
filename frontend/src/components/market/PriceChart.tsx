@@ -33,16 +33,34 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, avgPrice }) => {
             width: chartContainerRef.current.clientWidth,
             height: 300,
             grid: {
-                vertLines: { color: '#374151' },
-                horzLines: { color: '#374151' },
+                vertLines: { visible: false },
+                horzLines: { visible: false },
             },
             rightPriceScale: {
                 borderColor: '#374151',
+                autoScale: true, // SIEMPRE ajustar altura automáticamente
             },
             timeScale: {
                 borderColor: '#374151',
                 timeVisible: true,
+                fixLeftEdge: true,
+                fixRightEdge: true,
+                borderVisible: false,
             },
+            handleScale: {
+                axisPressedMouseMove: false, // No permitir cambiar escala arrastrando los números
+            },
+            handleScroll: {
+                vertTouchDrag: false, // No mover verticalmente con el dedo
+                pressedMouseMove: false, // No mover verticalmente con el mouse
+                mouseWheel: false, // No zoom con la rueda
+                horzTouchDrag: true, // Horizontal SÍ permitimos
+            },
+            crosshair: {
+                vertLine: {
+                    labelVisible: true,
+                }
+            }
         });
 
         chartRef.current = chart;

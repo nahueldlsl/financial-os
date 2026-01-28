@@ -21,7 +21,7 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
         setLoading(true);
         try {
             // 1. Chart Data
-            const chartRes = await fetch(`http://localhost:8000/api/market/history/${ticker}?period=${range}`);
+            const chartRes = await fetch(`http://localhost:8000/api/market/history/${ticker}?range=${range}`);
             const chartJson = await chartRes.json();
             if (chartJson.data) setChartData(chartJson.data);
 
@@ -123,7 +123,7 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-200">Price Action</h3>
                             <div className="flex bg-gray-800 rounded-lg p-1 gap-1">
-                                {['1D', '1W', '1M', '1Y'].map(r => (
+                                {['1D', '1W', '1M', '3M', '1Y'].map(r => (
                                     <button
                                         key={r}
                                         onClick={() => setRange(r)}

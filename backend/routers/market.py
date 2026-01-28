@@ -10,16 +10,21 @@ def get_market_history(ticker: str, range: str = "1y"):
     # Configuración "Perfil Inversor"
     interval = "1d"
     period = "1y"
+    
+    range = range.lower()
 
     if range == "1d":
         period = "1d"
-        interval = "1h" # Hora a hora para el día de hoy
+        interval = "15m" # 15 min para detalle diario
     elif range == "1w":
         period = "5d"
-        interval = "1d" # Cierre diario para la semana
+        interval = "60m" # Horas para la semana (forma detallada)
     elif range == "1m":
         period = "1mo"
         interval = "1d"
+    elif range == "3m":
+        period = "3mo"
+        interval = "1d" # Trimestre (NUEVO)
     elif range == "max":
         period = "max"
         interval = "1d"
