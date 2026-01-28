@@ -285,3 +285,71 @@ class PortfolioService:
         session.commit()
         
         return {"mensaje": "Venta exitosa", "ganancia_realizada": to_dollars(ganancia_cents)}
+
+    @staticmethod
+    def recalculate_asset_from_history(session: Session, ticker: str):
+        """
+        Reinicia el estado del Asset a 0 y reproduce todo el historial cronológicamente.
+        Regla de Oro: Vender NO cambia el precio promedio.
+        """
+        # 1. Fetch chronological history
+        history = session.exec(
+            select(TradeHistory)
+            .where(TradeHistory.ticker == ticker)
+            .order_by(TradeHistory.fecha.asc())
+        ).all()
+
+        current_shares = 0.0
+        # Tracks total invested cost for the *current* shares only.
+        # This is effectively (Shares * AvgPrice). Kept as float for precision.
+        current_total_cost_basis = 0.0 
+        
+        for trade in history:
+            qty = safe_float(trade.cantidad)
+            price_cents = trade.precio
+            comm_cents = trade.commission
+            
+            if trade.tipo == "BUY":
+                # Costo de esta compra = (qty * price) + comm
+                cost_this_trade = (qty * price_cents) + comm_cents
+                
+                current_shares += qty
+                current_total_cost_basis += cost_this_trade
+                
+            elif trade.tipo == "SELL":
+                # Si vendemos, reducimos shares y costo base PROPORCIONALMENTE.
+                # El precio promedio NO cambia.
+                if current_shares > 0:
+                    # Calculate Avg Price before reducing
+                    current_avg_price = current_total_cost_basis / current_shares
+                    
+                    # Reduce shares
+                    current_shares -= qty
+                    
+                    if current_shares <= 0.000001:
+                        current_shares = 0
+                        current_total_cost_basis = 0
+                    else:
+                        # New Cost Basis = Remaining Shares * Same Avg Price
+                        # This ensures Avg Price stays constant.
+                        current_total_cost_basis = current_shares * current_avg_price
+                else:
+                    current_shares = 0
+                    current_total_cost_basis = 0
+
+        # Update Asset
+        asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
+        if not asset:
+            asset = Asset(ticker=ticker, cantidad_total=0, precio_promedio=0)
+            
+        asset.cantidad_total = current_shares
+        
+        if current_shares > 0:
+            asset.precio_promedio = int(round(current_total_cost_basis / current_shares))
+        else:
+            asset.precio_promedio = 0
+            
+        session.add(asset)
+        session.commit()
+        session.refresh(asset)
+        return asset

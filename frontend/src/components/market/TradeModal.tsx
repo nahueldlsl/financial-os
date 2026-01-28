@@ -9,9 +9,10 @@ interface Props {
     onSubmit: (type: 'buy' | 'sell', data: TradeAction) => Promise<boolean>;
     initialTicker?: string;
     currentPrice?: number;
+    initialSide?: 'buy' | 'sell';
 }
 
-export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initialTicker = '', currentPrice = 0 }) => {
+export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initialTicker = '', currentPrice = 0, initialSide = 'buy' }) => {
     const [ticker, setTicker] = useState(initialTicker);
     const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]); // Hoy YYYY-MM-DD
     const [usarCaja, setUsarCaja] = useState(true);
@@ -33,7 +34,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
         if (isOpen) {
             setTicker(initialTicker);
             reset();
-            setMode('buy');
+            setMode(initialSide); // Respetar el lado inicial
             // Re-setear precio si vino por props (el hook lo maneja en useEffect, pero el reset lo limpia)
             if (currentPrice > 0) setPrecio(currentPrice.toString());
 
@@ -45,7 +46,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                     .catch(err => console.error("Error loading settings in modal", err));
             }
         }
-    }, [isOpen, initialTicker, currentPrice]);
+    }, [isOpen, initialTicker, currentPrice, initialSide]); // Add initialSide to dep array
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -69,23 +70,17 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="flex justify-between items-center p-4 border-b border-slate-800">
-                    <div className="flex gap-2 bg-slate-950 p-1 rounded-lg">
-                        <button
-                            onClick={() => setMode('buy')}
-                            className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'buy' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            COMPRAR
-                        </button>
-                        <button
-                            onClick={() => setMode('sell')}
-                            className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'sell' ? 'bg-red-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            VENDER
-                        </button>
+                    <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <span className={mode === 'buy' ? 'text-emerald-400' : 'text-red-400'}>
+                                {mode === 'buy' ? 'COMPRAR' : 'VENDER'}
+                            </span>
+                            {ticker}
+                        </h2>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={20} /></button>
                 </div>

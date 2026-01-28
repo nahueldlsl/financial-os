@@ -8,6 +8,7 @@ import { AssetCard } from '../components/market/AssetCard';
 import { TradeModal } from '../components/market/TradeModal';
 import { CashModal } from '../components/market/CashModal';
 import { JsonImportModal } from '../components/market/JsonImportModal';
+import AssetDetailView from '../components/market/AssetDetailView';
 
 // Usamos 'import type' para interfaces
 import type { Posicion } from '../types';
@@ -20,16 +21,26 @@ export default function MarketView() {
     const [isCashOpen, setCashOpen] = useState(false);
     const [isImportOpen, setImportOpen] = useState(false);
 
-    // Estado Selección Activo
+    // Estado para Ver Detalle
+    const [viewAssetTicker, setViewAssetTicker] = useState<string | null>(null);
+
+    // Estado Selección Activo para Trading
     const [selectedAsset, setSelectedAsset] = useState<{ ticker: string, price: number } | undefined>(undefined);
+    // Estado para Lado del Trade (Buy/Sell)
+    const [selectedSide, setSelectedSide] = useState<'buy' | 'sell'>('buy');
 
     // Estado Búsqueda
     const [search, setSearch] = useState('');
 
-    const handleOpenTrade = (ticker = '', price = 0) => {
+    const handleOpenTrade = (ticker = '', price = 0, side: 'buy' | 'sell' = 'buy') => {
         setSelectedAsset({ ticker, price });
+        setSelectedSide(side);
         setTradeOpen(true);
     };
+
+    const handleViewAsset = (ticker: string) => {
+        setViewAssetTicker(ticker);
+    }
 
     if (error) return <div className="p-10 text-red-500 text-center">Error: {error}</div>;
     if (loading && !data) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">Cargando portafolio...</div>;
@@ -42,6 +53,12 @@ export default function MarketView() {
     const filteredPosiciones = posiciones.filter((p: Posicion) =>
         p.Ticker.toLowerCase().includes(search.toLowerCase())
     );
+
+    // Find current avg price of selected asset for Detail View
+    const getAvgPrice = (ticker: string) => {
+        const asset = posiciones.find(p => p.Ticker === ticker);
+        return asset?.Precio_Promedio;
+    }
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-8 font-sans">
@@ -113,7 +130,7 @@ export default function MarketView() {
                         key={pos.Ticker}
                         asset={pos}
                         totalPortfolioValue={resumen.valor_total_portafolio}
-                        onClick={() => handleOpenTrade(pos.Ticker, pos.Precio_Actual)}
+                        onClick={() => handleViewAsset(pos.Ticker)}
                     />
                 ))}
 
@@ -136,6 +153,7 @@ export default function MarketView() {
                 onSubmit={executeTrade}
                 initialTicker={selectedAsset?.ticker}
                 currentPrice={selectedAsset?.price}
+                initialSide={selectedSide}
             />
 
             <CashModal
@@ -149,6 +167,16 @@ export default function MarketView() {
                 isOpen={isImportOpen}
                 onClose={() => setImportOpen(false)}
             />
+
+            {/* Asset Detail View Modal */}
+            {viewAssetTicker && (
+                <AssetDetailView
+                    ticker={viewAssetTicker}
+                    onClose={() => setViewAssetTicker(null)}
+                    currentAvgPrice={getAvgPrice(viewAssetTicker)}
+                    onOpenTrade={handleOpenTrade}
+                />
+            )}
 
         </div>
     );
