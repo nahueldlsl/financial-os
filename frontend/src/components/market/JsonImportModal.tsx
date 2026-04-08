@@ -7,22 +7,29 @@ interface JsonImportModalProps {
 }
 
 export function JsonImportModal({ isOpen, onClose }: JsonImportModalProps) {
-    const [jsonContent, setJsonContent] = useState('');
+    const [historialFile, setHistorialFile] = useState<File | null>(null);
+    const [posicionesFile, setPosicionesFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     if (!isOpen) return null;
 
     const handleImport = async () => {
+        if (!historialFile || !posicionesFile) {
+            setError("Debes subir ambos archivos JSON");
+            return;
+        }
+        
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch('http://localhost:8000/api/portfolio/import', {
+            const formData = new FormData();
+            formData.append('historial_file', historialFile);
+            formData.append('posiciones_file', posicionesFile);
+
+            const response = await fetch('http://localhost:8000/api/data/import-broker', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ content: jsonContent }),
+                body: formData,
             });
 
             if (!response.ok) {
@@ -69,13 +76,25 @@ export function JsonImportModal({ isOpen, onClose }: JsonImportModalProps) {
                 <div className="p-6 space-y-4">
                     <div className="bg-slate-950 rounded-xl border border-slate-800 p-4">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            Pegar JSON Aquí
+                            Archivo historial_transacciones.json
                         </label>
-                        <textarea
-                            value={jsonContent}
-                            onChange={(e) => setJsonContent(e.target.value)}
-                            className="w-full h-64 bg-slate-900 border border-slate-800 rounded-lg p-4 font-mono text-sm text-slate-300 focus:outline-none focus:border-indigo-500 transition resize-none placeholder:text-slate-600"
-                            placeholder='[ { "Ticker": "AAPL", "Cantidad_Total": 10.5, "Precio_Promedio": 150.0 }, ... ]'
+                        <input
+                            type="file"
+                            accept=".json"
+                            onChange={(e) => setHistorialFile(e.target.files ? e.target.files[0] : null)}
+                            className="w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-500/20 file:text-indigo-400 hover:file:bg-indigo-500/30 transition-colors"
+                        />
+                    </div>
+                    
+                    <div className="bg-slate-950 rounded-xl border border-slate-800 p-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            Archivo posiciones_actuales.json
+                        </label>
+                        <input
+                            type="file"
+                            accept=".json"
+                            onChange={(e) => setPosicionesFile(e.target.files ? e.target.files[0] : null)}
+                            className="w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-500/20 file:text-indigo-400 hover:file:bg-indigo-500/30 transition-colors"
                         />
                     </div>
 
@@ -96,7 +115,7 @@ export function JsonImportModal({ isOpen, onClose }: JsonImportModalProps) {
                     </button>
                     <button
                         onClick={handleImport}
-                        disabled={loading || !jsonContent.trim()}
+                        disabled={loading || !historialFile || !posicionesFile}
                         className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
                         {loading ? 'Procesando...' : (

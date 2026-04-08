@@ -54,6 +54,9 @@ class ImportService:
         from services.portfolio_service import PortfolioService
         from datetime import datetime
 
+        # FIX-12: Collect all entries first, then batch commit + recalculate
+        unique_tickers = set()
+
         for item in data:
             # 1. Validar claves
             ticker = item.get("Ticker")
@@ -65,48 +68,43 @@ class ImportService:
 
             # Normalizar ticker
             ticker_normalized = str(ticker).strip().upper()
+            unique_tickers.add(ticker_normalized)
 
             # 2. Conversión de Tipos
             precio_promedio_cents = int(round(precio_promedio_float * 100))
             cantidad_float = float(cantidad)
             
-            # CRÍTICO: No tocamos Asset directamente.
-            # Creamos una transacción "BUY" histórica base.
-            
             # Calcular total (Costo Base Aproximado)
             total_cents = int(round(cantidad_float * precio_promedio_cents))
 
-            # Verificar si ya existe alguna historia para no duplicar en importaciones sucesivas?
-            # Por simplicidad del requerimiento "Event Replay", asumimos que es una importación
-            # o snapshot. Idealmente borraríamos historia previa si es un "Full Import".
-            # Pero agregaremos un flag o description para identificarlo.
-            
             hist_entry = TradeHistory(
                 ticker=ticker_normalized,
-                tipo="BUY", # Tratamos el saldo inicial como una COMPRA
+                tipo="BUY",
                 cantidad=cantidad_float,
                 precio=precio_promedio_cents,
                 total=total_cents,
                 commission=0,
-                fecha=datetime(2024, 1, 1), # Fecha base fija para ordenar al inicio
+                fecha=datetime(2024, 1, 1),
                 ganancia_realizada=0
             )
             
             session.add(hist_entry)
-            session.commit() # Guardar historia
-            
-            # 3. TRIGGER EVENT REPLAY
-            PortfolioService.recalculate_asset_from_history(session, ticker_normalized)
-            
-            # 4. Actualizar Precio Mercado (Opcional, pero bueno para UX inmediata)
-            try:
-                # Buscamos el asset recién creado/actualizado por el Replay
-                asset = session.exec(select(Asset).where(Asset.ticker == ticker_normalized)).first()
-                if asset:
-                    MarketDataService.get_market_prices(session, [asset])
-            except Exception:
-                pass
-            
             processed_count += 1
+
+        # Un solo commit para todas las historias
+        session.commit()
+        
+        # Recalcular solo los tickers únicos (no repetir)
+        for ticker in unique_tickers:
+            PortfolioService.recalculate_asset_from_history(session, ticker)
+        
+        # Actualizar precios de mercado en batch
+        try:
+            all_assets = [session.exec(select(Asset).where(Asset.ticker == t)).first() for t in unique_tickers]
+            valid_assets = [a for a in all_assets if a is not None]
+            if valid_assets:
+                MarketDataService.get_market_prices(session, valid_assets)
+        except Exception:
+            pass
         
         return {"processed": processed_count, "message": "Importación completada exitosamente"}

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Wallet, Plus, Search, FileJson } from 'lucide-react';
+import { ArrowLeft, Wallet, Plus, Search } from 'lucide-react';
 
 // Asegúrate que el archivo se llame usePortfolio.ts (en inglés)
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AssetCard } from '../components/market/AssetCard';
 import { TradeModal } from '../components/market/TradeModal';
 import { CashModal } from '../components/market/CashModal';
-import { JsonImportModal } from '../components/market/JsonImportModal';
 import AssetDetailView from '../components/market/AssetDetailView';
+import { JsonImportModal } from '../components/market/JsonImportModal';
 
 // Usamos 'import type' para interfaces
 import type { Posicion } from '../types';
@@ -19,7 +19,7 @@ export default function MarketView() {
     // Estados Modales
     const [isTradeOpen, setTradeOpen] = useState(false);
     const [isCashOpen, setCashOpen] = useState(false);
-    const [isImportOpen, setImportOpen] = useState(false);
+    const [isBrokerImportOpen, setBrokerImportOpen] = useState(false);
 
     // Estado para Ver Detalle
     const [viewAssetTicker, setViewAssetTicker] = useState<string | null>(null);
@@ -90,14 +90,15 @@ export default function MarketView() {
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Buying Power</p>
                         <p className="text-xl font-bold text-white">${cash.toLocaleString()}</p>
                     </div>
-                    <div className="h-8 w-px bg-slate-800 mx-2" />
+                    {/* Botones de Sincronización */}
                     <button
-                        onClick={() => setImportOpen(true)}
-                        className="flex items-center gap-2 px-3 py-2 bg-transparent hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg text-sm font-bold transition mr-1"
-                        title="Importar JSON"
+                        onClick={() => setBrokerImportOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg text-sm font-bold transition ml-2"
+                        title="Subir archivos JSON del Broker"
                     >
-                        <FileJson size={18} />
+                        📥 Sincronizar Broker
                     </button>
+
                     <button
                         onClick={() => handleOpenTrade()}
                         className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-bold transition"
@@ -163,11 +164,6 @@ export default function MarketView() {
                 onSubmit={manageCash}
             />
 
-            <JsonImportModal
-                isOpen={isImportOpen}
-                onClose={() => setImportOpen(false)}
-            />
-
             {/* Asset Detail View Modal */}
             {viewAssetTicker && (
                 <AssetDetailView
@@ -177,6 +173,12 @@ export default function MarketView() {
                     onOpenTrade={handleOpenTrade}
                 />
             )}
+
+            {/* Broker Sync Modal */}
+            <JsonImportModal 
+                isOpen={isBrokerImportOpen}
+                onClose={() => setBrokerImportOpen(false)}
+            />
 
         </div>
     );

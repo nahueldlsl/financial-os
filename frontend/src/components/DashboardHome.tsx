@@ -272,19 +272,19 @@ export default function DashboardHome() {
                                 colorClass="bg-amber-500"
                             />
                         </div>
-                        <div className="block h-full opacity-75 cursor-not-allowed">
+                        <Link to="/analytics" className="block h-full">
                             <ModuleCard
-                                title="Analytics (Soon)"
+                                title="Analytics & Risk"
                                 icon={<Activity size={24} />}
                                 colorClass="bg-violet-500"
                             />
-                        </div>
+                        </Link>
 
                         <div className="col-span-2">
-                            <button className="w-full h-full flex items-center justify-center gap-3 p-6 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold transition-all shadow-lg hover:shadow-indigo-500/25 group">
+                            <Link to="/oracle" className="w-full h-full flex items-center justify-center gap-3 p-6 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold transition-all shadow-lg hover:shadow-indigo-500/25 group">
                                 <BrainCircuit size={28} className="group-hover:rotate-12 transition-transform" />
                                 <span>Ask AI Oracle</span>
-                            </button>
+                            </Link>
                         </div>
                     </div>
 

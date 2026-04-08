@@ -80,24 +80,27 @@ export default function CashFlow() {
         }
     };
 
-    // Lógica financiera (evitando NaN)
+    // FIX-4: Operar en centavos enteros para evitar drift de punto flotante
     const calcularBalanceTotal = (): number => {
         if (!exchangeRate || exchangeRate === 0) return 0;
 
-        return movimientos.reduce((total, m) => {
-            // Normalizar todo a USD
-            let valorEnUSD = 0;
+        const totalCents = movimientos.reduce((total, m) => {
+            // Convertir monto (float dollars) a centavos enteros
+            const montoCents = Math.round(m.monto * 100);
+            let valorCentsUSD = 0;
 
             if (m.moneda === 'UYU') {
-                valorEnUSD = m.monto / exchangeRate;
+                valorCentsUSD = Math.round(montoCents / exchangeRate);
             } else {
-                valorEnUSD = m.monto;
+                valorCentsUSD = montoCents;
             }
 
             return m.tipo === 'ingreso'
-                ? total + valorEnUSD
-                : total - valorEnUSD;
+                ? total + valorCentsUSD
+                : total - valorCentsUSD;
         }, 0);
+
+        return totalCents / 100; // Conversión final a dollars
     };
 
     return (

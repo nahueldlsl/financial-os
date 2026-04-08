@@ -22,6 +22,10 @@ class Asset(SQLModel, table=True):
     # Caching para Performance
     cached_price: Optional[int] = Field(default=None) # CENTS: Precio actual de mercado
     last_updated: Optional[datetime] = Field(default=None)
+    
+    # Tracking de Operaciones
+    fecha_primera_compra: Optional[datetime] = Field(default=None)
+    fecha_ultima_operacion: Optional[datetime] = Field(default=None)
 
 # --- CONFIGURACIÓN DE BROKER (Singleton) ---
 class BrokerSettings(SQLModel, table=True):
