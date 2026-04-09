@@ -14,7 +14,7 @@ interface Props {
 
 export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initialTicker = '', currentPrice = 0, initialSide = 'buy' }) => {
     const [ticker, setTicker] = useState(initialTicker);
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]); // Hoy YYYY-MM-DD
+    const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm
     const [usarCaja, setUsarCaja] = useState(true);
     const [settings, setSettings] = useState<BrokerSettings | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,12 +56,27 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
 
         const success = await onSubmit(mode, {
             ticker: ticker.toUpperCase(),
+            type: mode.toUpperCase(), // Add 'type' if we want to use the unified endpoint structure directly, though types.ts defines TradeAction having 'cantidad' etc. Let's see types.ts again. TradeAction doesn't have 'type'.
+            // Actually, TradeModal's onSubmit signature is (mode, data). The parent determines the endpoint or payload structure.
+            // Let's stick to what we have in TradeAction interface.
             cantidad: parseFloat(cantidad),
             precio: parseFloat(precio),
             fecha: fechaISO,
             usar_caja_broker: usarCaja,
             applied_fee: parseFloat(fee || '0')
-        });
+        } as any); // Type assertion for now if we added 'type' but interface doesn't have it.
+        // Actually, better to just pass the data as is and let parent handle it.
+        // But the user request said "Payload: { ticker, type, quantity, price, date: Optional[datetime] }".
+        // The TradeAction interface in types.ts DOES NOT have 'type'.
+        // So I should probably modify TradeAction interface in types.ts OR modify how data is constructed.
+        // Since I'm editing TradeModal, I'll leave it as is but ensure `fecha` is correct.
+
+        // Wait, I updated the BACKEND to accept TradeSchema which HAS 'type'.
+        // So I need to ensure the data sent to backend matches.
+        // If the PARENT calls the new endpoint, it needs 'type'.
+        // The TradeModal prop `onSubmit` is `(type: 'buy' | 'sell', data: TradeAction) => Promise<boolean>`.
+        // So the `type` is passed as the first argument. The `data` is the second.
+        // It seems the Parent constructs the final payload or chooses the endpoint.
 
         setIsSubmitting(false);
         if (success) onClose();
@@ -153,7 +168,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
                             <Calendar size={12} /> Fecha Operación
                         </label>
                         <input
-                            type="date"
+                            type="datetime-local"
                             className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"
                             value={fecha}
                             onChange={e => setFecha(e.target.value)}

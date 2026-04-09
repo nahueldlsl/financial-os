@@ -60,11 +60,15 @@ export function usePortfolio() {
     // Ejecutar Operación (Compra/Venta)
     const executeTrade = async (type: 'buy' | 'sell', trade: TradeAction) => {
         try {
-            const res = await fetch(`${API_URL}/trade/${type}`, {
+            // Unified Endpoint Logic
+            const payload = { ...trade, type: type.toUpperCase() };
+
+            const res = await fetch(`${API_URL}/portfolio/trade`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(trade)
+                body: JSON.stringify(payload)
             });
+
             if (!res.ok) {
                 const err = await res.json();
                 throw new Error(err.detail || 'Error en operación');

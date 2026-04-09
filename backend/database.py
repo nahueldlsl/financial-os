@@ -22,3 +22,18 @@ def get_session():
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    
+    # Migración en caliente para compatibilidad con bases de datos pre-existentes (PostgreSQL/SQLite)
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+    
+    with engine.begin() as conn:
+        try:
+            columns = [col['name'] for col in inspector.get_columns('asset')]
+            if "fecha_primera_compra" not in columns:
+                conn.execute(text("ALTER TABLE asset ADD COLUMN fecha_primera_compra TIMESTAMP"))
+            if "fecha_ultima_operacion" not in columns:
+                conn.execute(text("ALTER TABLE asset ADD COLUMN fecha_ultima_operacion TIMESTAMP"))
+        except Exception as e:
+            # Table might not exist yet or other error
+            pass

@@ -42,17 +42,10 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
     }, [ticker, range]);
 
     // --- Actions ---
-    const handleDelete = async (id: number) => {
-        try {
-            const res = await fetch(`http://localhost:8000/api/trading/history/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                fetchData(); // Refresh all
-            } else {
-                alert('Failed to delete trade');
-            }
-        } catch (e) {
-            alert('Error deleting trade');
-        }
+    // --- Actions ---
+    const handleDelete = (id: number) => {
+        // Optimistic update (HistoryTable handles API call now)
+        setHistory(prev => prev.filter(tx => tx.id !== id));
     };
 
     const handleEdit = (tx: TradeHistoryItem) => {
@@ -80,6 +73,24 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
             alert('Error updating');
         }
     }
+
+    const handleDateUpdate = async (id: number, newDate: string) => {
+        try {
+            const res = await fetch(`http://localhost:8000/api/portfolio/transaction/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: newDate })
+            });
+
+            if (res.ok) {
+                fetchData();
+            } else {
+                alert('Failed to update date');
+            }
+        } catch (e) {
+            alert('Error updating date');
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -160,7 +171,13 @@ const AssetDetailView: React.FC<AssetDetailViewProps> = ({ ticker, onClose, curr
                     {/* History Section */}
                     <div>
                         <h3 className="text-lg font-semibold text-gray-200 mb-4">Trade History</h3>
-                        <HistoryTable transactions={history} onEdit={handleEdit} onDelete={handleDelete} />
+                        <HistoryTable
+                            transactions={history}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onDateUpdate={handleDateUpdate}
+                            onTradeSuccess={fetchData}
+                        />
                     </div>
 
                 </div>
