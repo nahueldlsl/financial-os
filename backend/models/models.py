@@ -53,3 +53,10 @@ class TradeHistory(SQLModel, table=True):
     
     # Costo de la operación
     commission: int = Field(default=0) # CENTS
+
+# --- WATCHLIST (Acciones en Seguimiento / Radar) ---
+class WatchlistItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticker: str = Field(index=True, unique=True)
+    added_at: datetime = Field(default_factory=datetime.now)
+    notes: Optional[str] = Field(default=None)

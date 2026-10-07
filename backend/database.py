@@ -2,8 +2,17 @@ from sqlmodel import SQLModel, create_engine, Session
 import os # <--- Importante
 
 # 1. Buscamos la URL en las variables de entorno (Configuración de Docker)
-# Si no existe, usamos SQLite (Configuración local de respaldo)
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///financial.db")
+# Si no existe, usamos SQLite con ruta absoluta determinista al archivo financial.db en la raíz del proyecto
+env_db_url = os.environ.get("DATABASE_URL")
+if not env_db_url:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    root_db = os.path.abspath(os.path.join(base_dir, "..", "financial.db"))
+    if os.path.exists(root_db):
+        DATABASE_URL = f"sqlite:///{root_db}"
+    else:
+        DATABASE_URL = f"sqlite:///{os.path.abspath(os.path.join(base_dir, 'financial.db'))}"
+else:
+    DATABASE_URL = env_db_url
 
 # 2. Configuración del Engine
 if "sqlite" in DATABASE_URL:

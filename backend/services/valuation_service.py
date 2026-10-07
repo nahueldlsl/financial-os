@@ -130,3 +130,40 @@ class ValuationService:
                         }
         
         return results
+
+    @classmethod
+    def calculate_for_session(cls, session) -> dict:
+        """Calcula el intrinsic score ajustado por diversificación para la sesión actual."""
+        from sqlmodel import select
+        from models.models import Asset
+        from services.market_service import MarketDataService
+
+        assets = session.exec(select(Asset)).all()
+        if not assets:
+            return {"analysis": [], "detail": []}
+
+        prices = MarketDataService.get_market_prices(session, assets)
+        active_tickers = [a.ticker for a in assets if (prices.get(a.ticker, 0) / 100.0) * float(a.cantidad_total) > 0]
+        fundamentals_batch = cls.evaluate_assets_batch(active_tickers)
+
+        payload_assets = []
+        for a in assets:
+            price_cents = prices.get(a.ticker, 0)
+            market_val_dollars = (price_cents / 100.0) * float(a.cantidad_total)
+            if market_val_dollars > 0:
+                fundamentals = fundamentals_batch.get(a.ticker, {})
+                payload_assets.append({
+                    "ticker": a.ticker,
+                    "market_value": market_val_dollars,
+                    "intrinsic_score": fundamentals.get("intrinsic_score", 50),
+                    "pe_ratio": fundamentals.get("pe_ratio", 0),
+                    "sector": fundamentals.get("sector", "Unknown"),
+                    "industry": fundamentals.get("industry", "Unknown")
+                })
+
+        adjusted_scores = cls.calculate_adjusted_intrinsic_score(payload_assets, max_concentration=0.30)
+        return {
+            "analysis": adjusted_scores,
+            "detail": payload_assets
+        }
+

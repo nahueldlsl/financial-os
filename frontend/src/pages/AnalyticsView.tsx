@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
     AreaChart,
     Area,
+    Line,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -28,11 +29,11 @@ import type { AnalyticsMetrics, ValuationResponse, ValuationAnalysis, Performanc
 import { SkeletonCard, SkeletonChart } from '../components/ui/Skeletons';
 import PerformanceBreakdown from '../components/PerformanceBreakdown';
 
+import { getApiUrl } from '../services/api';
+
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function AnalyticsView() {
     const [loading, setLoading] = useState(true);
@@ -49,11 +50,11 @@ export default function AnalyticsView() {
         setFetchError(null);
         try {
             const [metricsRes, chartRes, valuationRes, divRes, perfRes] = await Promise.all([
-                fetch(`${BASE_URL}/api/analytics/metrics?period=${period}`),
-                fetch(`${BASE_URL}/api/analytics/portfolio-performance`),
-                fetch(`${BASE_URL}/api/analytics/valuation`),
-                fetch(`${BASE_URL}/api/analytics/diversification`),
-                fetch(`${BASE_URL}/api/analytics/performance-breakdown`)
+                fetch(getApiUrl(`/analytics/metrics?period=${period}`)),
+                fetch(getApiUrl('/analytics/portfolio-performance')),
+                fetch(getApiUrl('/analytics/valuation')),
+                fetch(getApiUrl('/analytics/diversification')),
+                fetch(getApiUrl('/analytics/performance-breakdown'))
             ]);
 
             if (metricsRes.ok) setMetrics(await metricsRes.json());
@@ -280,7 +281,10 @@ export default function AnalyticsView() {
                     {/* Chart Container */}
                     <div className="col-span-1 md:col-span-4 bg-slate-900/50 border border-slate-800/50 rounded-3xl p-6 flex flex-col h-[450px]">
                         <div className="mb-4 flex items-center justify-between shrink-0">
-                            <h3 className="text-lg font-semibold text-slate-200">Rentabilidad Histórica Acumulada (%)</h3>
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-200">Rentabilidad Histórica Acumulada (%)</h3>
+                                <p className="text-xs text-slate-400 mt-0.5">Time-Weighted Return (TWR) institucional vs Benchmark S&P 500</p>
+                            </div>
                         </div>
                         {chartDataMemo && chartDataMemo.length > 0 ? (
                             <div className="flex-1 w-full min-h-0">
@@ -298,12 +302,12 @@ export default function AnalyticsView() {
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#f1f5f9' }}
                                         itemStyle={{ fontWeight: 600 }}
-                                        formatter={(value: any) => [`${value}%`]}
+                                        formatter={(value: any, name: any) => [`${value}%`, name]}
                                     />
                                     <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '14px' }} iconType="circle" />
                                     <Area 
                                         type="monotone" 
-                                        name="Portfolio Acumulado (%)" 
+                                        name="Portfolio TWR (%)" 
                                         dataKey="pct_portafolio" 
                                         stroke="#10b981" 
                                         strokeWidth={3} 
@@ -317,7 +321,16 @@ export default function AnalyticsView() {
                                         }}
                                         activeDot={{ r: 6, fill: "#10b981", stroke: "#0f172a", strokeWidth: 2 }}
                                     />
-                                    <Area type="monotone" name="S&P 500 (^GSPC) (%)" dataKey="pct_sp500" stroke="#6366f1" strokeWidth={2} fill="transparent" strokeDasharray="5 5" dot={false} />
+                                    <Line 
+                                        type="monotone" 
+                                        name="S&P 500 TWR (%)" 
+                                        dataKey="pct_sp500" 
+                                        stroke="#38bdf8" 
+                                        strokeWidth={2.5} 
+                                        strokeDasharray="4 4" 
+                                        dot={false} 
+                                        activeDot={{ r: 6, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 2 }} 
+                                    />
                                 </AreaChart>
                             </ResponsiveContainer>
                             </div>

@@ -44,13 +44,11 @@ class MarketDataService:
         if tickers_to_update:
             try:
                 # threads=True acelera la descarga masiva
-                print(f"Descargando precios para: {tickers_to_update}")
-                # Use period="5d" to catch weekend/holiday gaps
-                data = yf.download(tickers_to_update, period="5d", threads=True)['Close']
-                
-                # Manejo de respuesta de yfinance (puede ser Series o DataFrame)
-                # Normalize data structure to handle single or multiple tickers uniformly if possible, 
-                # but yfinance is tricky.
+                df_raw = yf.download(tickers_to_update, period="5d", threads=True, progress=False)
+                try:
+                    data = df_raw['Close'] if df_raw is not None else pd.DataFrame()
+                except Exception:
+                    data = pd.DataFrame()
                 
                 # 3. Actualizar DB y completar el mapa
                 for ticker in tickers_to_update:
@@ -60,9 +58,7 @@ class MarketDataService:
 
                     new_price_float = 0.0
                     
-                    # Extraer precio seguro
                     try:
-                        # Logic to get the last valid price
                         if isinstance(data, pd.DataFrame):
                             if ticker in data.columns:
                                 series = data[ticker]
@@ -70,38 +66,27 @@ class MarketDataService:
                                 if last_valid_idx is not None:
                                     new_price_float = float(series.loc[last_valid_idx])
                         elif isinstance(data, pd.Series):
-                             # If single ticker result, yfinance returns Series named 'Close' or the ticker itself depending on version/context
-                             # Usually for multiple it's DF, for single it might be Series.
-                             # If we requested a list (even length 1), let's see. 
-                             # If it's a Series, check if it's time-series or ticker-series. 
-                             # 'Close' with period='5d' should be a Series with DateTime index if 1 ticker.
-                             last_valid_idx = data.last_valid_index()
-                             if last_valid_idx is not None:
-                                 new_price_float = float(data.loc[last_valid_idx])
-                                 
-                    except Exception as e:
-                        print(f"Error extracting price for {ticker}: {e}")
-                        new_price_float = 0.0 # Fallback
+                            last_valid_idx = data.last_valid_index()
+                            if last_valid_idx is not None:
+                                new_price_float = float(data.loc[last_valid_idx])
+                    except Exception:
+                        new_price_float = 0.0
                     
-                    # Validar precio > 0 para guardar
                     if new_price_float > 0:
-                        # CONVERT TO CENTS (Strict Logic)
-                        new_price_cents = int(new_price_float * 100)
-                        
+                        new_price_cents = int(round(new_price_float * 100))
                         asset.cached_price = new_price_cents
                         asset.last_updated = now
-                        session.add(asset) # Marcar para UPDATE en DB
+                        session.add(asset)
                         prices_map[asset.ticker] = new_price_cents
                     else:
-                        print(f"WARNING: No se encontró precio para {ticker}. Verifica si está bien escrito.")
-                        # Si falló la descarga, usamos el caché viejo si existe (or 0)
                         prices_map[asset.ticker] = asset.cached_price or 0
 
-                session.commit() # Guardar cambios en lote
+                try:
+                    session.commit()
+                except Exception:
+                    session.rollback()
                 
             except Exception as e:
-                print(f"Error actualizando precios: {e}")
-                # En caso de error masivo, intentar usar caché viejo para todos los fallidos
                 for t in tickers_to_update:
                     asset = ticker_to_asset_map.get(t)
                     if asset:

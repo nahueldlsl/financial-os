@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2, Edit, Check, X } from 'lucide-react';
+import { getApiUrl } from '../../services/api';
 
 export interface TradeHistoryItem {
     id: number;
@@ -52,8 +53,8 @@ const HistoryTable: React.FC<HistoryTableProps> = ({ transactions, onEdit, onDel
         }
 
         try {
-            // Updated URL to match backend/routers/trading.py
-            const response = await fetch(`/api/trading/history/${id}`, {
+            // Updated URL using centralized getApiUrl
+            const response = await fetch(getApiUrl(`/trading/history/${id}`), {
                 method: 'DELETE',
             });
 

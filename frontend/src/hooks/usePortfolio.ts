@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PortfolioResponse, BrokerCash, TradeAction, BrokerFund } from '../types';
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_URL = `${BASE_URL}/api`;
+import { API_URL } from '../services/api';
 
 export function usePortfolio() {
     const [data, setData] = useState<PortfolioResponse | null>(null);
@@ -14,11 +12,14 @@ export function usePortfolio() {
     const fetchAll = useCallback(async () => {
         setLoading(true);
         setError(null);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
         try {
             // Usamos allSettled para que un fallo en cash no rompa el portfolio y viceversa
             const results = await Promise.allSettled([
-                fetch(`${API_URL}/portfolio`),
-                fetch(`${API_URL}/broker/cash`)
+                fetch(`${API_URL}/portfolio`, { signal: controller.signal }),
+                fetch(`${API_URL}/broker/cash`, { signal: controller.signal })
             ]);
 
             const [resPort, resCash] = results;
@@ -29,7 +30,6 @@ export function usePortfolio() {
                 setData(result);
             } else if (resPort.status === 'rejected' || (resPort.status === 'fulfilled' && !resPort.value.ok)) {
                 console.error("Error fetching portfolio");
-                // Podríamos setear un error específico, pero dejamos pasar si cash funcionó
             }
 
             // Procesar Cash
@@ -42,12 +42,19 @@ export function usePortfolio() {
 
             // Si ambos fallaron
             if (resPort.status === 'rejected' && resCash.status === 'rejected') {
-                setError("No se pudo conectar con el servidor.");
+                setError("No se pudo conectar con el servidor backend (puerto 8000).");
+            } else if (resPort.status === 'rejected' || (resPort.status === 'fulfilled' && !resPort.value.ok)) {
+                setError("No se pudieron cargar los datos del portafolio.");
             }
 
         } catch (err: any) {
-            setError(err.message);
+            if (err.name === 'AbortError') {
+                setError("El servidor demoró en responder (timeout).");
+            } else {
+                setError(err.message || "Error al conectar con el servidor.");
+            }
         } finally {
+            clearTimeout(timeoutId);
             setLoading(false);
         }
     }, []);
@@ -61,7 +68,13 @@ export function usePortfolio() {
     const executeTrade = async (type: 'buy' | 'sell', trade: TradeAction) => {
         try {
             // Unified Endpoint Logic
-            const payload = { ...trade, type: type.toUpperCase() };
+            const payload = {
+                ...trade,
+                type: type.toUpperCase(),
+                quantity: trade.cantidad,
+                price: trade.precio,
+                date: trade.fecha
+            };
 
             const res = await fetch(`${API_URL}/portfolio/trade`, {
                 method: 'POST',

@@ -77,6 +77,15 @@ class ImportService:
             # Calcular total (Costo Base Aproximado)
             total_cents = int(round(cantidad_float * precio_promedio_cents))
 
+            # Extraer fecha si viene en el snapshot, de lo contrario datetime.now()
+            trade_date = datetime.now()
+            fecha_raw = item.get("fecha") or item.get("date") or item.get("Fecha")
+            if fecha_raw:
+                try:
+                    trade_date = datetime.fromisoformat(str(fecha_raw))
+                except (ValueError, TypeError):
+                    pass
+
             hist_entry = TradeHistory(
                 ticker=ticker_normalized,
                 tipo="BUY",
@@ -84,7 +93,7 @@ class ImportService:
                 precio=precio_promedio_cents,
                 total=total_cents,
                 commission=0,
-                fecha=datetime(2024, 1, 1),
+                fecha=trade_date,
                 ganancia_realizada=0
             )
             

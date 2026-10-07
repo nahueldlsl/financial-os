@@ -5,11 +5,11 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { OracleInsight } from '../types';
 
+import { getApiUrl } from '../services/api';
+
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const getInsightIcon = (type: string) => {
     switch (type) {
@@ -38,7 +38,7 @@ export default function OracleView() {
     useEffect(() => {
         const fetchOracleInsights = async () => {
             try {
-                const res = await fetch(`${BASE_URL}/api/analytics/oracle`);
+                const res = await fetch(getApiUrl('/analytics/oracle'));
                 if (res.ok) {
                     const data = await res.json();
                     setInsights(data.insights || []);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Settings } from 'lucide-react';
+import { getApiUrl } from '../services/api';
 
 interface Props {
     isOpen: boolean;
@@ -29,7 +30,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const loadSettings = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('http://127.0.0.1:8000/api/settings/');
+            const res = await fetch(getApiUrl('/settings/'));
             if (res.ok) {
                 const data = await res.json();
                 setSettings({
@@ -48,7 +49,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
         e.preventDefault();
         setIsSaving(true);
         try {
-            const res = await fetch('http://127.0.0.1:8000/api/settings/', {
+            const res = await fetch(getApiUrl('/settings/'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
@@ -93,7 +94,10 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                                         type="number" step="0.01"
                                         className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 pl-7 text-white font-mono focus:border-indigo-500 outline-none transition-colors"
                                         value={settings.default_fee_integer}
-                                        onChange={e => setSettings({ ...settings, default_fee_integer: parseFloat(e.target.value) })}
+                                        onChange={e => {
+                                            const val = parseFloat(e.target.value);
+                                            setSettings({ ...settings, default_fee_integer: isNaN(val) ? 0 : val });
+                                        }}
                                     />
                                 </div>
                                 <p className="text-[10px] text-slate-600 mt-1">Se aplica cuando compras/vendes cantidades excatas (ej: 1, 5, 10)</p>
@@ -109,7 +113,10 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                                         type="number" step="0.01"
                                         className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 pl-7 text-white font-mono focus:border-indigo-500 outline-none transition-colors"
                                         value={settings.default_fee_fractional}
-                                        onChange={e => setSettings({ ...settings, default_fee_fractional: parseFloat(e.target.value) })}
+                                        onChange={e => {
+                                            const val = parseFloat(e.target.value);
+                                            setSettings({ ...settings, default_fee_fractional: isNaN(val) ? 0 : val });
+                                        }}
                                     />
                                 </div>
                                 <p className="text-[10px] text-slate-600 mt-1">Se aplica cuando operas fracciones (ej: 0.5, 1.25)</p>

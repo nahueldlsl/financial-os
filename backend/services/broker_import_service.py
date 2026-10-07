@@ -92,18 +92,26 @@ class BrokerImportService:
             cantidad_acciones = float(pos.get("cantidad_acciones", 0.0))
             valor_actual_total = float(pos.get("valor_total_usd", 0.0))
             
+            # Inversión Neta y Precio Promedio seguro
             inversion_neta = inversion_neta_por_ticker.get(ticker, 0.0)
             
-            # Precio promedio (en dólares) -> a CENTAVOS para la DB
+            cached_price_usd = (valor_actual_total / cantidad_acciones) if cantidad_acciones > 0.000001 else 0.0
+            
+            # El precio promedio de compra nunca puede ser negativo o cero si el activo tiene valor
             if cantidad_acciones > 0.000001:
-                precio_promedio_usd = inversion_neta / cantidad_acciones
-                cached_price_usd = valor_actual_total / cantidad_acciones
+                if inversion_neta > 0:
+                    precio_promedio_usd = inversion_neta / cantidad_acciones
+                elif pos.get("precio_compra"):
+                    precio_promedio_usd = float(pos.get("precio_compra"))
+                elif pos.get("precio_promedio"):
+                    precio_promedio_usd = float(pos.get("precio_promedio"))
+                else:
+                    precio_promedio_usd = cached_price_usd
             else:
                 precio_promedio_usd = 0.0
-                cached_price_usd = 0.0
                 
-            precio_promedio_cents = int(round(precio_promedio_usd * 100))
-            cached_price_cents = int(round(cached_price_usd * 100))
+            precio_promedio_cents = max(0, int(round(precio_promedio_usd * 100)))
+            cached_price_cents = max(0, int(round(cached_price_usd * 100)))
             
             # Mapeo de Fechas Agregadas usando el Join Array
             ticker_fechas = fechas_transacciones.get(ticker, { "compras": [], "todas": [] })
@@ -122,7 +130,6 @@ class BrokerImportService:
                 existing_asset.precio_promedio = precio_promedio_cents
                 existing_asset.cached_price = cached_price_cents
                 existing_asset.last_updated = datetime.now()
-                # Enriquecemos con los dates reales del Broker Histórico
                 if primera_compra: existing_asset.fecha_primera_compra = primera_compra
                 if ultima_operacion: existing_asset.fecha_ultima_operacion = ultima_operacion
                 session.add(existing_asset)
@@ -138,13 +145,13 @@ class BrokerImportService:
                 )
                 session.add(new_asset)
                 
-            # ---- ACTULIZAR TRADE HISTORY ----
-            # Borrar las trades anteriores para no acular duplicados
+            # ---- ACTUALIZAR TRADE HISTORY ----
+            # Limpiar trades anteriores del ticker para el import de broker
             old_trades = session.exec(select(TradeHistory).where(TradeHistory.ticker == ticker)).all()
             for old_t in old_trades:
                 session.delete(old_t)
                 
-            # Insertar los historiales con cálculos proporcionales
+            # Insertar los historiales con cálculos proporcionales seguros
             txs_ticker = transacciones_validas.get(ticker, [])
             for tx_info in txs_ticker:
                 monto_trade = tx_info["monto"]
@@ -153,8 +160,9 @@ class BrokerImportService:
                 abs_monto = abs(monto_trade)
                 total_cents = int(round(abs_monto * 100))
                 
-                if precio_promedio_usd > 0.0001:
-                    qty = abs_monto / precio_promedio_usd
+                trade_price_cents = precio_promedio_cents if precio_promedio_cents > 0 else cached_price_cents
+                if trade_price_cents > 0:
+                    qty = (total_cents / trade_price_cents)
                 else:
                     qty = 0.0
                     
@@ -162,7 +170,7 @@ class BrokerImportService:
                     ticker=ticker,
                     tipo=op_type,
                     cantidad=qty,
-                    precio=precio_promedio_cents,
+                    precio=trade_price_cents,
                     total=total_cents,
                     fecha=tx_info["fecha"],
                     commission=0,
@@ -170,13 +178,14 @@ class BrokerImportService:
                 )
                 session.add(new_trade)
                 
-        # 3. Limpiar Assets que ya no existen en posiciones (ej: Venta total)
+        # 3. Soft-handling de Assets que ya no existen en posiciones actuales (ej: venta total)
+        # En lugar de hard delete que rompe relaciones históricas, ponemos cantidad en 0
         posiciones_tickers = { pos.get("ticker") for pos in posiciones_json if pos.get("ticker") }
         all_assets = session.exec(select(Asset)).all()
         
         for db_asset in all_assets:
             if db_asset.ticker not in posiciones_tickers:
-                # El activo ya no está en el portafolio actual (se vendió todo)
-                session.delete(db_asset)
+                db_asset.cantidad_total = 0.0
+                session.add(db_asset)
                 
         # Commit se hace desde el router

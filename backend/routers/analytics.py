@@ -23,46 +23,9 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 def get_risk_metrics(session: Session = Depends(get_session), period: str = Query("1y")):
     """
     Retorna métricas cuantitativas como Volatilidad, Beta, Sharpe Ratio y Max Drawdown.
-    Ojo: Requiere calcular en base al portafolio actual.
     """
-    # 1. Obtener activos de la DB
-    assets = session.exec(select(Asset)).all()
-    tickers = [asset.ticker for asset in assets if asset.cantidad_total > 0]
-    
-    if not tickers:
-        return {"error": "Portafolio vacío o sin acciones."}
-
     try:
-        # Lógica de Inception Date: Inicio real de nuestra historia
-        inception_date = session.exec(select(func.min(TradeHistory.fecha))).first()
-
-        # Descargar histórico del benchmark y activos
-        portfolio_returns_df = RiskMetricsService.fetch_historical_returns(tickers, period=period)
-        benchmark_returns_df = RiskMetricsService.fetch_historical_returns(["^GSPC"], period=period)
-        
-        # Filtro de seguridad: Nunca graficar antes del Inception Date
-        if inception_date and not portfolio_returns_df.empty:
-            inception_dt = pd.to_datetime(inception_date)
-            # 1. Asegurarnos que es naive antes de alinear
-            if inception_dt.tzinfo is not None:
-                inception_dt = inception_dt.tz_localize(None)
-            # 2. Localizar al timezone de Yahoo Finance
-            if portfolio_returns_df.index.tz is not None:
-                inception_dt = inception_dt.tz_localize(portfolio_returns_df.index.tz)
-            
-            portfolio_returns_df = portfolio_returns_df[portfolio_returns_df.index >= inception_dt]
-            benchmark_returns_df = benchmark_returns_df[benchmark_returns_df.index >= inception_dt]
-
-        # Ponderación simplificada (Equally Weighted proxy, o se podría pesar por val_mercado actual)
-        # Para mejorar performance asumimos Equally Weighted para el proxy diario temporal:
-        if not portfolio_returns_df.empty:
-            portfolio_avg_returns = portfolio_returns_df.mean(axis=1) # Promedio equiponderado por día
-            benchmark_1d = benchmark_returns_df.iloc[:, 0] if not benchmark_returns_df.empty else pd.Series()
-            
-            metrics = RiskMetricsService.calculate_portfolio_metrics(portfolio_avg_returns, benchmark_1d)
-            return metrics
-        else:
-            return {"error": "Sin datos históricos suficientes."}
+        return RiskMetricsService.calculate_for_session(session, period=period)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -226,39 +189,12 @@ def get_intrinsic_valuation(session: Session = Depends(get_session)):
     """
     Calcula el intrinsic score ajustado por diversificación
     """
-    assets = session.exec(select(Asset)).all()
-    if not assets:
-        return []
-        
-    prices = MarketDataService.get_market_prices(session, assets)
-    
-    # FIX-9: Batch evaluation paralela
-    active_tickers = [a.ticker for a in assets if (prices.get(a.ticker, 0) / 100.0) * float(a.cantidad_total) > 0]
-    fundamentals_batch = ValuationService.evaluate_assets_batch(active_tickers)
-    
-    payload_assets = []
-    for a in assets:
-        price_cents = prices.get(a.ticker, 0)
-        market_val_dollars = (price_cents / 100.0) * float(a.cantidad_total)
-        
-        if market_val_dollars > 0:
-            fundamentals = fundamentals_batch.get(a.ticker, {})
-            payload_assets.append({
-                "ticker": a.ticker,
-                "market_value": market_val_dollars,
-                "intrinsic_score": fundamentals.get("intrinsic_score", 50),
-                "pe_ratio": fundamentals.get("pe_ratio", 0),
-                "sector": fundamentals.get("sector", "Unknown"),
-                "industry": fundamentals.get("industry", "Unknown")
-            })
-            
-    # Ajustar por concentración (30% max limit)
-    adjusted_scores = ValuationService.calculate_adjusted_intrinsic_score(payload_assets, max_concentration=0.30)
-    
-    return {
-        "analysis": adjusted_scores,
-        "detail": payload_assets
-    }
+    try:
+        return ValuationService.calculate_for_session(session)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/oracle")
 def get_oracle_insights(session: Session = Depends(get_session)):
@@ -266,13 +202,13 @@ def get_oracle_insights(session: Session = Depends(get_session)):
     Orquesta los datos hacia el OracleService y provee los Insights sugeridos.
     """
     try:
-        # Get risk metrics
-        metrics = get_risk_metrics(session, period="1y")
+        # Get risk metrics directly from service
+        metrics = RiskMetricsService.calculate_for_session(session, period="1y")
         if isinstance(metrics, dict) and "error" in metrics:
             return {"insights": []}
 
-        # Get valuation data
-        val_response = get_intrinsic_valuation(session)
+        # Get valuation data directly from service
+        val_response = ValuationService.calculate_for_session(session)
         val_data = val_response.get("analysis", []) if isinstance(val_response, dict) else []
 
         # Get cash logic via dashboard summary

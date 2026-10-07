@@ -19,6 +19,7 @@ def get_or_create_settings(session: Session) -> BrokerSettings:
         session.refresh(settings)
     return settings
 
+@router.get("", include_in_schema=False)
 @router.get("/")
 def get_settings(session: Session = Depends(get_session)):
     s = get_or_create_settings(session)
@@ -28,6 +29,7 @@ def get_settings(session: Session = Depends(get_session)):
         "default_fee_fractional": s.default_fee_fractional / 100.0
     }
 
+@router.post("", include_in_schema=False)
 @router.post("/")
 def update_settings(update: SettingsUpdate, session: Session = Depends(get_session)):
     settings = get_or_create_settings(session)

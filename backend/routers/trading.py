@@ -65,7 +65,8 @@ def update_trade(id: int, trade_in: TradeHistoryUpdate, session: Session = Depen
     session.commit()
     
     # TRIGGER REPLAY
-    PortfolioService.recalculate_asset_from_history(session, trade.ticker)
+    if trade.ticker != "CASH":
+        PortfolioService.recalculate_asset_from_history(session, trade.ticker)
     
     return {"message": "Trade updated and asset recalculated"}
 
@@ -80,6 +81,7 @@ def delete_trade(id: int, session: Session = Depends(get_session)):
     session.commit()
     
     # TRIGGER REPLAY
-    PortfolioService.recalculate_asset_from_history(session, ticker)
+    if ticker != "CASH":
+        PortfolioService.recalculate_asset_from_history(session, ticker)
     
     return {"message": "Trade deleted and asset recalculated"}

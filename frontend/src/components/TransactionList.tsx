@@ -22,15 +22,15 @@ export const TransactionList: React.FC<Props> = ({ movimientos, exchangeRate }) 
     return (
         <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
             <div className="divide-y divide-slate-800">
-                {/* Usamos slice().reverse() para ver el más nuevo arriba sin mutar el array original */}
-                {movimientos.slice().reverse().map((m, i) => {
+                {/* Los movimientos ya vienen ordenados descendentemente por fecha desde el backend */}
+                {movimientos.map((m, i) => {
                     // Cálculo seguro para visualización
                     const estimadoUSD = (m.moneda === 'UYU' && exchangeRate > 0)
                         ? (m.monto / exchangeRate)
                         : null;
 
                     return (
-                        <div key={i} className="p-4 flex justify-between items-center hover:bg-slate-800/40 transition duration-150">
+                        <div key={m.id ?? i} className="p-4 flex justify-between items-center hover:bg-slate-800/40 transition duration-150">
                             <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-full ${m.tipo === 'ingreso' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                                     {m.tipo === 'ingreso' ? <PlusCircle size={18} /> : <MinusCircle size={18} />}

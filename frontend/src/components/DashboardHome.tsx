@@ -93,10 +93,10 @@ const AssetRow = ({ asset, total }: { asset: Asset; total: number }) => {
     );
 };
 
+import { getApiUrl } from '../services/api';
+
 // Rename Pie import to avoid conflict
 const TopPie = Pie;
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function DashboardHome() {
     const [timeRange, setTimeRange] = useState('1M');
@@ -109,7 +109,7 @@ export default function DashboardHome() {
         const fetchDashboard = async () => {
             try {
                 // Ensure race condition is minimized by backend fallback, but basic fetch here.
-                const res = await fetch(`${BASE_URL}/api/dashboard`);
+                const res = await fetch(getApiUrl('/dashboard'));
                 if (res.ok) {
                     const result = await res.json();
                     setData(result);

@@ -4,12 +4,12 @@ import os
 from datetime import datetime
 
 # Configuración
-DB_PATH = 'c:/Users/nahue/OneDrive/Escritorio/UCU/Proyectos/Visualizacion de inversion/backend/financial.db'
-POSITIONS_JSON = 'c:/Users/nahue/OneDrive/Escritorio/posiciones_actuales.json'
-TRADES_JSON = 'c:/Users/nahue/OneDrive/Escritorio/historial_transacciones.json'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "..", "financial.db"))
+POSITIONS_JSON = os.environ.get("POSITIONS_JSON", os.path.join(BASE_DIR, "posiciones_actuales.json"))
+TRADES_JSON = os.environ.get("TRADES_JSON", os.path.join(BASE_DIR, "historial_transacciones.json"))
 
-def to_cents(dollars_float):
-    return int(round(float(dollars_float) * 100))
+from utils.money import to_cents
 
 def parse_date(date_str):
     months = {

@@ -52,19 +52,22 @@ class RiskMetricsService:
         """
         Función pura que recibe un array de retornos filtrados por fechas y calcula
         el Max Drawdown dinámico en esa ventana específica.
+        Anclado a base 1.0 para capturar caídas desde el primer día de observación.
         """
         if filtered_returns.empty:
             return 0.0
         
-        # 1. Pico acumulado (Running / Cumulative Max)
-        cumulative_returns = (1 + filtered_returns).cumprod()
+        # 1. Pico acumulado (Running / Cumulative Max anclado en 1.0)
+        cum_series = (1.0 + filtered_returns).cumprod()
+        cumulative_returns = pd.concat([pd.Series([1.0]), cum_series], ignore_index=True)
         peak = cumulative_returns.cummax()
         
         # 2. Caída diaria desde ese pico
         drawdown = (cumulative_returns - peak) / peak
         
         # 3. Valor mínimo (la caída más profunda)
-        return float(drawdown.min())
+        min_dd = float(drawdown.min())
+        return min_dd if not (np.isnan(min_dd) or np.isinf(min_dd)) else 0.0
 
     @staticmethod
     def calculate_portfolio_metrics(returns: pd.Series, market_returns: pd.Series, risk_free_rate_annual=0.04) -> dict:
@@ -115,4 +118,54 @@ class RiskMetricsService:
             "sharpe_ratio": round(float(sharpe_ratio), 2),
             "max_drawdown_pct": round(max_drawdown * 100, 2)
         }
+
+    @classmethod
+    def calculate_for_session(cls, session, period: str = "1y") -> dict:
+        """Calcula las métricas de riesgo para el portafolio en la sesión de base de datos."""
+        from sqlmodel import select, func
+        from models.models import Asset, TradeHistory
+
+        assets = session.exec(select(Asset)).all()
+        tickers = [asset.ticker for asset in assets if asset.cantidad_total > 0]
+        if not tickers:
+            return {"error": "Portafolio vacío o sin acciones."}
+
+        inception_date = session.exec(select(func.min(TradeHistory.fecha))).first()
+
+        portfolio_returns_df = cls.fetch_historical_returns(tickers, period=period)
+        benchmark_returns_df = cls.fetch_historical_returns(["^GSPC"], period=period)
+
+        if inception_date and not portfolio_returns_df.empty:
+            inception_dt = pd.to_datetime(inception_date)
+            if inception_dt.tzinfo is not None:
+                inception_dt = inception_dt.tz_localize(None)
+            if portfolio_returns_df.index.tz is not None:
+                inception_dt = inception_dt.tz_localize(portfolio_returns_df.index.tz)
+
+            portfolio_returns_df = portfolio_returns_df[portfolio_returns_df.index >= inception_dt]
+            benchmark_returns_df = benchmark_returns_df[benchmark_returns_df.index >= inception_dt]
+
+        if not portfolio_returns_df.empty:
+            from services.market_service import MarketDataService
+            prices_map = MarketDataService.get_market_prices(session, assets)
+            weights_dict = {}
+            total_market_val = 0.0
+            for a in assets:
+                if a.cantidad_total > 0 and a.ticker in portfolio_returns_df.columns:
+                    mkt_val = (prices_map.get(a.ticker, 0) / 100.0) * float(a.cantidad_total)
+                    weights_dict[a.ticker] = mkt_val
+                    total_market_val += mkt_val
+
+            if total_market_val > 0:
+                weights = pd.Series({k: v / total_market_val for k, v in weights_dict.items()})
+                weights = weights.reindex(portfolio_returns_df.columns).fillna(0)
+                portfolio_weighted_returns = (portfolio_returns_df * weights).sum(axis=1)
+            else:
+                portfolio_weighted_returns = portfolio_returns_df.mean(axis=1)
+
+            benchmark_1d = benchmark_returns_df.iloc[:, 0] if not benchmark_returns_df.empty else pd.Series()
+            return cls.calculate_portfolio_metrics(portfolio_weighted_returns, benchmark_1d)
+        else:
+            return {"error": "Sin datos históricos suficientes."}
+
 

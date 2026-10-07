@@ -9,44 +9,39 @@ from fastapi import HTTPException
 from models.models import Asset, Transaction, BrokerCash, TradeHistory
 # Services
 from services.market_service import MarketDataService
+from utils.money import safe_float, to_cents, to_dollars
 
-# Utils
-def safe_float(val):
-    try:
-        if val is None: return 0.0
-        f = float(val)
-        if math.isnan(f) or math.isinf(f): return 0.0
-        return f
-    except: return 0.0
-
-def to_cents(val_float: float) -> int:
-    """Convierte monto en DÓLARES (float) a CENTAVOS (int)."""
-    return int(round(val_float * 100))
-
-def to_dollars(val_cents: int) -> float:
-    """Convierte CENTAVOS (int) a DÓLARES (float) para UI."""
-    return safe_float(val_cents) / 100.0
+_dolar_cache = {"price": 1.0, "last_updated": None}
 
 class PortfolioService:
-    
+    # Alias para compatibilidad con callers y tests
+    get_market_prices = staticmethod(MarketDataService.get_market_prices)
+
     @staticmethod
     def get_dolar_price() -> float:
         """
-        Obtiene la cotización. Si falla o es nula, DEVUELVE 1.0 para NO ROMPER EL DASHBOARD.
-        El dashboard asumirá paridad 1:1 o usará el valor anterior si existiera persistencia, 
-        pero aquí garantizamos que no retorne 0 ni lance excepción.
+        Obtiene la cotización con caché en memoria (1 hora).
+        Si falla o es nula, devuelve la última cotización válida o 1.0.
         """
+        global _dolar_cache
+        now = datetime.now()
+        last_updated = _dolar_cache.get("last_updated")
+        if last_updated and (now - last_updated).total_seconds() < 3600:
+            return _dolar_cache["price"]
+
         try:
             import requests
-            # Timeout corto para no bloquear la UI si la API externa está lenta
-            resp = requests.get("https://uy.dolarapi.com/v1/cotizaciones/usd", timeout=2)
-            val = float(resp.json().get('venta', 0))
-            if val > 0:
-                return val
-            return 1.0 # Fallback safe
+            resp = requests.get("https://uy.dolarapi.com/v1/cotizaciones/usd", timeout=3)
+            if resp.status_code == 200:
+                val = float(resp.json().get('venta', 0))
+                if val > 0:
+                    _dolar_cache["price"] = val
+                    _dolar_cache["last_updated"] = now
+                    return val
         except Exception:
-            # Log error internally if needed
-            return 1.0 # Fallback safe para que la UI muestre datos en USD
+            pass
+
+        return _dolar_cache.get("price", 1.0)
 
     @staticmethod
     def get_dashboard_summary(session: Session) -> Dict:
@@ -163,128 +158,180 @@ class PortfolioService:
         return cash
 
     @staticmethod
-    def execute_buy(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, applied_fee: float = 0.0, fecha: Optional[datetime] = None):
-        # Convertir INPUTS a CENTS
-        precio_cents = to_cents(precio)
-        fee_cents = to_cents(applied_fee)
-        
-        # Total Costo = (Cantidad * Precio) + Fee
-        # Ojo: Cantidad es float.
-        # Costo Base Operación (cents) = 10.5 * 10050 = 105525.0
-        costo_bruto_cents = cantidad * precio_cents
-        total_costo_cents = int(round(costo_bruto_cents + fee_cents)) # Final integer cents to deduct
-        
-        # 1. Verificar Caja
-        if usar_caja_broker:
-            cash = PortfolioService.get_or_create_broker_cash(session)
-            if cash.saldo_usd < total_costo_cents:
-                # Mostrar error amigable en Dólares
-                saldo_dollars = to_dollars(cash.saldo_usd)
-                costo_dollars = to_dollars(total_costo_cents)
-                raise HTTPException(status_code=400, detail=f"Saldo insuficiente. Requerido: ${costo_dollars:.2f}, Disponible: ${saldo_dollars:.2f}")
-            
-            cash.saldo_usd -= total_costo_cents
-            session.add(cash)
+    def fund_broker(session: Session, monto_enviado: float, monto_recibido: float, tipo: str) -> Dict:
+        """Gestiona el fondeo y retiros de la caja del broker y su impacto contable."""
+        cash = PortfolioService.get_or_create_broker_cash(session)
+        monto_enviado_cents = to_cents(monto_enviado)
+        monto_recibido_cents = to_cents(monto_recibido)
+        comision_cents = monto_enviado_cents - monto_recibido_cents
 
-        # 2. Actualizar o Crear Activo
-        asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
-        
-        if not asset:
-            asset = Asset(
-                ticker=ticker,
-                cantidad_total=cantidad,
-                precio_promedio=precio_cents, # STORE AS CENTS
+        if tipo == "DEPOSIT":
+            cash.saldo_usd += monto_recibido_cents
+            gasto_transferencia = Transaction(
+                tipo="gasto",
+                monto=monto_recibido_cents,
+                moneda="USD",
+                categoria="Transferencia a Broker",
+                fecha=datetime.now()
             )
-        else:
-            # Recalcular Promedio Ponderado
-            # Costo anterior (total cents val)
-            costo_anterior_cents = asset.cantidad_total * asset.precio_promedio # Float result
-            
-            # Nuevo costo total implícito (sin contar fees usualmente para el promedio, o si? 
-            # Estándar fiscal: precio + comision es tu base de costo.
-            # Según user prompt, "commission" es un campo aparte, pero "monto" es lo que pagas.
-            # Vamos a sumar la comisión al costo base del activo para reflejar el costo real de adquisición (Break Even adecuado).
-            
-            nuevo_costo_total_cents = costo_anterior_cents + total_costo_cents 
-            nueva_cantidad = asset.cantidad_total + cantidad
-            
-            asset.cantidad_total = nueva_cantidad
-            
-            # Nuevo promedio = Total Costo Cents / Nueva Cantidad
-            if nueva_cantidad > 0:
-                asset.precio_promedio = int(round(nuevo_costo_total_cents / nueva_cantidad))
-            else:
-                asset.precio_promedio = 0
+            session.add(gasto_transferencia)
 
-        session.add(asset)
+            if comision_cents > 0:
+                gasto_comision = Transaction(
+                    tipo="gasto",
+                    monto=comision_cents,
+                    moneda="USD",
+                    categoria="Comisión Broker / Transferencia",
+                    fecha=datetime.now()
+                )
+                session.add(gasto_comision)
 
-        # 3. Guardar en Historial (Input values stored as CENTS)
+        elif tipo == "WITHDRAW":
+            if cash.saldo_usd < monto_enviado_cents:
+                raise HTTPException(status_code=400, detail="Saldo insuficiente en broker")
+            cash.saldo_usd -= monto_enviado_cents
+            ingreso_banco = Transaction(
+                tipo="ingreso",
+                monto=monto_recibido_cents,
+                moneda="USD",
+                categoria="Retiro desde Broker",
+                fecha=datetime.now()
+            )
+            session.add(ingreso_banco)
+
         hist = TradeHistory(
-            ticker=ticker,
-            tipo="BUY",
-            cantidad=cantidad,
-            precio=precio_cents,
-            total=total_costo_cents,
-            commission=fee_cents,
-            fecha=fecha or datetime.now()
+            ticker="CASH",
+            tipo=tipo,
+            cantidad=1,
+            precio=monto_recibido_cents,
+            total=monto_recibido_cents
         )
         session.add(hist)
+        session.add(cash)
         session.commit()
-        
-        return {"mensaje": "Compra exitosa", "nuevo_promedio": to_dollars(asset.precio_promedio)}
+
+        return {"nuevo_saldo": to_dollars(cash.saldo_usd), "comision_registrada": to_dollars(comision_cents)}
+
+    @staticmethod
+    def execute_buy(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, applied_fee: float = 0.0, fecha: Optional[datetime] = None):
+        try:
+            # Convertir INPUTS a CENTS
+            precio_cents = to_cents(precio)
+            fee_cents = to_cents(applied_fee)
+            
+            # Total Costo = (Cantidad * Precio) + Fee
+            costo_bruto_cents = cantidad * precio_cents
+            total_costo_cents = int(round(costo_bruto_cents + fee_cents))
+            
+            # 1. Verificar Caja
+            if usar_caja_broker:
+                cash = PortfolioService.get_or_create_broker_cash(session)
+                if cash.saldo_usd < total_costo_cents:
+                    saldo_dollars = to_dollars(cash.saldo_usd)
+                    costo_dollars = to_dollars(total_costo_cents)
+                    raise HTTPException(status_code=400, detail=f"Saldo insuficiente. Requerido: ${costo_dollars:.2f}, Disponible: ${saldo_dollars:.2f}")
+                
+                cash.saldo_usd -= total_costo_cents
+                session.add(cash)
+
+            # 2. Actualizar o Crear Activo
+            asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
+            
+            if not asset:
+                asset = Asset(
+                    ticker=ticker,
+                    cantidad_total=cantidad,
+                    precio_promedio=precio_cents,
+                )
+            else:
+                costo_anterior_cents = asset.cantidad_total * asset.precio_promedio
+                nuevo_costo_total_cents = costo_anterior_cents + total_costo_cents 
+                nueva_cantidad = asset.cantidad_total + cantidad
+                
+                asset.cantidad_total = nueva_cantidad
+                if nueva_cantidad > 0:
+                    asset.precio_promedio = int(round(nuevo_costo_total_cents / nueva_cantidad))
+                else:
+                    asset.precio_promedio = 0
+
+            session.add(asset)
+
+            # 3. Guardar en Historial
+            hist = TradeHistory(
+                ticker=ticker,
+                tipo="BUY",
+                cantidad=cantidad,
+                precio=precio_cents,
+                total=total_costo_cents,
+                commission=fee_cents,
+                fecha=fecha or datetime.now()
+            )
+            session.add(hist)
+            session.commit()
+            
+            return {"mensaje": "Compra exitosa", "nuevo_promedio": to_dollars(asset.precio_promedio)}
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Error ejecutando compra: {str(e)}")
 
     @staticmethod
     def execute_sell(session: Session, ticker: str, cantidad: float, precio: float, usar_caja_broker: bool, applied_fee: float = 0.0, fecha: Optional[datetime] = None):
-        # Convert Inputs
-        precio_cents = to_cents(precio)
-        fee_cents = to_cents(applied_fee)
-        
-        # 1. Verificar si tenemos la acción
-        asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
-        if not asset or asset.cantidad_total < cantidad:
-            raise HTTPException(status_code=400, detail="No tienes suficientes acciones para vender")
+        try:
+            # Convert Inputs
+            precio_cents = to_cents(precio)
+            fee_cents = to_cents(applied_fee)
+            
+            # 1. Verificar si tenemos la acción
+            asset = session.exec(select(Asset).where(Asset.ticker == ticker)).first()
+            if not asset or asset.cantidad_total < cantidad:
+                raise HTTPException(status_code=400, detail="No tienes suficientes acciones para vender")
 
-        # Cálculos Venta
-        total_venta_bruta_cents = cantidad * precio_cents # Float
-        # Net proceeds = Bruto - Fee
-        total_venta_neta_cents = int(round(total_venta_bruta_cents - fee_cents))
-        
-        # 2. Calcular Ganancia Realizada (FIFO o Promedio? Usamos Promedio según modelo simplificado)
-        # Costo de la parte vendida
-        costo_proporcional_cents = cantidad * asset.precio_promedio
-        # Ganancia = Net Proceeds - Cost Basis
-        ganancia_cents = int(round(total_venta_neta_cents - costo_proporcional_cents))
+            # Cálculos Venta
+            total_venta_bruta_cents = cantidad * precio_cents
+            total_venta_neta_cents = int(round(total_venta_bruta_cents - fee_cents))
+            
+            # 2. Calcular Ganancia Realizada
+            costo_proporcional_cents = cantidad * asset.precio_promedio
+            ganancia_cents = int(round(total_venta_neta_cents - costo_proporcional_cents))
 
-        # 3. Actualizar Activo
-        asset.cantidad_total -= cantidad
-        if asset.cantidad_total <= 0.00001:
-            asset.cantidad_total = 0
-            asset.precio_promedio = 0 
-        
-        session.add(asset)
+            # 3. Actualizar Activo
+            asset.cantidad_total -= cantidad
+            if asset.cantidad_total <= 0.00001:
+                asset.cantidad_total = 0
+                asset.precio_promedio = 0 
+            
+            session.add(asset)
 
-        # 4. Actualizar Caja Broker
-        if usar_caja_broker:
-            cash = PortfolioService.get_or_create_broker_cash(session)
-            # Sumamos lo neto (lo que realmente entró al bolsillo)
-            cash.saldo_usd += total_venta_neta_cents
-            session.add(cash)
+            # 4. Actualizar Caja Broker
+            if usar_caja_broker:
+                cash = PortfolioService.get_or_create_broker_cash(session)
+                cash.saldo_usd += total_venta_neta_cents
+                session.add(cash)
 
-        # 5. Guardar Historial
-        hist = TradeHistory(
-            ticker=ticker,
-            tipo="SELL",
-            cantidad=cantidad,
-            precio=precio_cents,
-            total=total_venta_neta_cents,
-            ganancia_realizada=ganancia_cents,
-            commission=fee_cents,
-            fecha=fecha or datetime.now()
-        )
-        session.add(hist)
-        session.commit()
-        
-        return {"mensaje": "Venta exitosa", "ganancia_realizada": to_dollars(ganancia_cents)}
+            # 5. Guardar Historial
+            hist = TradeHistory(
+                ticker=ticker,
+                tipo="SELL",
+                cantidad=cantidad,
+                precio=precio_cents,
+                total=total_venta_neta_cents,
+                ganancia_realizada=ganancia_cents,
+                commission=fee_cents,
+                fecha=fecha or datetime.now()
+            )
+            session.add(hist)
+            session.commit()
+            
+            return {"mensaje": "Venta exitosa", "ganancia_realizada": to_dollars(ganancia_cents)}
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Error ejecutando venta: {str(e)}")
 
     @staticmethod
     def recalculate_asset_from_history(session: Session, ticker: str):

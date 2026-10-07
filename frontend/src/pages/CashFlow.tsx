@@ -9,9 +9,7 @@ import type { Movimiento, DolarResponse } from '../types';
 // Antes tenías quizás esto fijo:
 // const API_URL = 'http://localhost:8000/api';
 
-// CAMBIAR A ESTO:
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_BASE = `${BASE_URL}/api`;
+import { API_URL as API_BASE } from '../services/api';
 
 export default function CashFlow() {
     // Estado

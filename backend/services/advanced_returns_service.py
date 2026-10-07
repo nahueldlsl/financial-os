@@ -22,24 +22,9 @@ import numpy as np
 import yfinance as yf
 from sqlmodel import Session, select
 
-from models.models import Asset, TradeHistory
+from models.models import Asset, TradeHistory, BrokerCash
 from services.market_service import MarketDataService
-
-
-def _safe_float(val) -> float:
-    try:
-        if val is None:
-            return 0.0
-        f = float(val)
-        if math.isnan(f) or math.isinf(f):
-            return 0.0
-        return f
-    except Exception:
-        return 0.0
-
-
-def _to_dollars(cents) -> float:
-    return _safe_float(cents) / 100.0
+from utils.money import safe_float as _safe_float, to_dollars as _to_dollars
 
 
 class AdvancedReturnsService:
@@ -198,6 +183,17 @@ class AdvancedReturnsService:
             start_str = start_date.strftime('%Y-%m-%d')
             end_str = (end_date + timedelta(days=1)).strftime('%Y-%m-%d')
 
+            # Usar caché compartido con AnalyticsService para evitar discrepancias y rate limits
+            from services.analytics_service import _sp500_cache
+            cached = _sp500_cache.get((start_str, end_str))
+            if cached is not None and not cached.empty and 'SP500_Close' in cached.columns:
+                close_col = cached['SP500_Close'].dropna()
+                if not close_col.empty:
+                    first_p = float(close_col.iloc[0])
+                    last_p = float(close_col.iloc[-1])
+                    if first_p > 0:
+                        return round(((last_p / first_p) - 1) * 100, 2)
+
             sp500 = yf.download('^GSPC', start=start_str, end=end_str, progress=False)
 
             if sp500.empty:
@@ -237,7 +233,9 @@ class AdvancedReturnsService:
         if not trades:
             return {"irr_annual": None, "twr": {"portfolio": None, "sp500": None}, "alpha": None}
 
-        # 1. Flujos para XIRR (Inversión absoluta)
+        has_deposits = any(t.tipo in ("DEPOSIT", "WITHDRAW") for t in trades)
+
+        # 1. Flujos para XIRR
         cashflows_xirr = []
         
         # 2. Flujos para TWR de Activos (Inyecciones/Retiros al balde de acciones)
@@ -248,18 +246,27 @@ class AdvancedReturnsService:
             fecha_key = trade.fecha.date()
             total_dollars = _to_dollars(trade.total)
             
-            # XIRR: Dinero que sale/entra al bolsillo (Depósitos/Retiros/Dividendos)
-            if trade.tipo == "DEPOSIT":
-                cashflows_xirr.append((trade.fecha, -abs(total_dollars)))
-            elif trade.tipo == "WITHDRAW":
-                cashflows_xirr.append((trade.fecha, abs(total_dollars)))
-            elif trade.tipo == "DIVIDEND":
-                cashflows_xirr.append((trade.fecha, abs(total_dollars)))
-                # TWR Activos: Si cobras dividendo, "sale" del bucket de activos al bucket de cash
-                daily_asset_flows[fecha_key] = daily_asset_flows.get(fecha_key, 0.0) - abs(total_dollars)
+            if has_deposits:
+                # Mode A: Account-Level XIRR (Depósitos y Retiros globales de la cuenta)
+                if trade.tipo == "DEPOSIT":
+                    cashflows_xirr.append((trade.fecha, -abs(total_dollars)))
+                elif trade.tipo == "WITHDRAW":
+                    cashflows_xirr.append((trade.fecha, abs(total_dollars)))
+                elif trade.tipo == "DIVIDEND":
+                    cashflows_xirr.append((trade.fecha, abs(total_dollars)))
+            else:
+                # Mode B: Asset-Level XIRR (Compras y Ventas directas sin caja de fondeo)
+                if trade.tipo == "BUY":
+                    cashflows_xirr.append((trade.fecha, -abs(total_dollars)))
+                elif trade.tipo == "SELL":
+                    cashflows_xirr.append((trade.fecha, abs(total_dollars)))
+                elif trade.tipo == "DIVIDEND":
+                    cashflows_xirr.append((trade.fecha, abs(total_dollars)))
             
-            # TWR Activos: Compras y Ventas son los flujos del bucket
-            if trade.tipo == "BUY":
+            # TWR Activos: Compras y Ventas son los flujos del bucket de acciones
+            if trade.tipo == "DIVIDEND":
+                daily_asset_flows[fecha_key] = daily_asset_flows.get(fecha_key, 0.0) - abs(total_dollars)
+            elif trade.tipo == "BUY":
                 daily_asset_flows[fecha_key] = daily_asset_flows.get(fecha_key, 0.0) + abs(total_dollars)
             elif trade.tipo == "SELL":
                 daily_asset_flows[fecha_key] = daily_asset_flows.get(fecha_key, 0.0) - abs(total_dollars)
@@ -267,13 +274,18 @@ class AdvancedReturnsService:
         # 3. Valor actual
         assets = session.exec(select(Asset)).all()
         active_assets = [a for a in assets if a.cantidad_total > 0]
-        current_val = 0.0
+        current_stocks_val = 0.0
         if active_assets:
             prices_map = MarketDataService.get_market_prices(session, active_assets)
             for a in active_assets:
-                current_val += _safe_float(a.cantidad_total) * prices_map.get(a.ticker, 0) / 100.0
+                current_stocks_val += _safe_float(a.cantidad_total) * prices_map.get(a.ticker, 0) / 100.0
         
-        cashflows_xirr.append((datetime.now(), current_val))
+        # Si se usaron depósitos de cuenta, incluir el saldo no invertido en la caja del broker
+        broker_cash = session.get(BrokerCash, 1)
+        broker_cash_dollars = _to_dollars(broker_cash.saldo_usd) if broker_cash else 0.0
+
+        ending_xirr_val = current_stocks_val + (broker_cash_dollars if has_deposits else 0.0)
+        cashflows_xirr.append((datetime.now(), ending_xirr_val))
         irr = AdvancedReturnsService.calculate_xirr(cashflows_xirr)
 
         # 4. TWR

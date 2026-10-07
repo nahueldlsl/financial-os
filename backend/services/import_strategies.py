@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from sqlmodel import Session, select
 from datetime import datetime
-from models.models import Asset, Transaction
+from models.models import Asset, Transaction, TradeHistory, BrokerCash, BrokerSettings
 from typing import Dict, List, Any
 
 class ImportStrategy(ABC):
@@ -97,8 +97,49 @@ class SmartMergeStrategy(ImportStrategy):
 
             new_tx = Transaction(**tx_dict)
             session.add(new_tx)
-        
-        # Session commit is handled by the caller or context?
+
+        # 3. Process TradeHistory
+        trades_data = data.get("trades", [])
+        for trade_dict in trades_data:
+            trade_id = trade_dict.get("id")
+            if trade_id:
+                existing_trade = session.get(TradeHistory, trade_id)
+                if existing_trade:
+                    continue
+            if "id" in trade_dict:
+                del trade_dict["id"]
+            if trade_dict.get("fecha"):
+                try:
+                    trade_dict["fecha"] = datetime.fromisoformat(trade_dict["fecha"])
+                except (ValueError, TypeError):
+                    trade_dict["fecha"] = datetime.now()
+            new_trade = TradeHistory(**trade_dict)
+            session.add(new_trade)
+
+        # 4. Process BrokerCash
+        cash_data = data.get("broker_cash")
+        if cash_data and isinstance(cash_data, dict):
+            cash_obj = session.get(BrokerCash, 1)
+            if not cash_obj:
+                cash_obj = BrokerCash(id=1, saldo_usd=cash_data.get("saldo_usd", 0))
+            else:
+                cash_obj.saldo_usd = cash_data.get("saldo_usd", cash_obj.saldo_usd)
+            session.add(cash_obj)
+
+        # 5. Process BrokerSettings
+        settings_data = data.get("broker_settings")
+        if settings_data and isinstance(settings_data, dict):
+            settings_obj = session.get(BrokerSettings, 1)
+            if not settings_obj:
+                settings_obj = BrokerSettings(
+                    id=1,
+                    default_fee_integer=settings_data.get("default_fee_integer", 0),
+                    default_fee_fractional=settings_data.get("default_fee_fractional", 0)
+                )
+            else:
+                settings_obj.default_fee_integer = settings_data.get("default_fee_integer", settings_obj.default_fee_integer)
+                settings_obj.default_fee_fractional = settings_data.get("default_fee_fractional", settings_obj.default_fee_fractional)
+            session.add(settings_obj)
         # The user instructions said: "Commit: Realiza un solo session.commit() al final"
         # Since this is the strategy executing the logic, it puts things in session.
         # The caller (Router) should likely commit to ensure atomicity across the whole operation,

@@ -4,6 +4,8 @@ Thumbs.db
 
 # --- PYTHON ---
 mi_entorno/
+.venv/
+backend/.venv/
 __pycache__/
 *.py[cod]
 *.so

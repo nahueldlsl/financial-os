@@ -81,3 +81,52 @@ def test_fund_deposit_side_effect_transaction(client, session):
     assert txs[0].tipo == "gasto"
     assert txs[0].monto == 100000 # Cents
     assert txs[0].categoria == "Transferencia a Broker"
+
+def test_portfolio_trade_bilingual_support(client, session):
+    """
+    Verifica que /api/portfolio/trade acepte tanto esquemas en español
+    (cantidad, precio, fecha) como en inglés (quantity, price, date).
+    """
+    session.add(BrokerCash(id=1, saldo_usd=500000))
+    session.commit()
+
+    # 1. Compra con campos en español (enviados desde TradeModal / usePortfolio)
+    res_es = client.post("/api/portfolio/trade", json={
+        "ticker": "MSFT",
+        "type": "BUY",
+        "cantidad": 1.0,
+        "precio": 300.0,
+        "fecha": "2026-10-05T00:00:00Z",
+        "usar_caja_broker": True,
+        "applied_fee": 1.5
+    })
+    assert res_es.status_code == 200
+
+    asset_msft = session.query(Asset).filter(Asset.ticker == "MSFT").first()
+    assert asset_msft is not None
+    assert asset_msft.cantidad_total == 1.0
+
+    # 2. Compra con campos en inglés (esquema original)
+    res_en = client.post("/api/portfolio/trade", json={
+        "ticker": "GOOGL",
+        "type": "BUY",
+        "quantity": 2.0,
+        "price": 150.0,
+        "date": "2026-10-05T00:00:00Z",
+        "usar_caja_broker": True,
+        "applied_fee": 2.0
+    })
+    assert res_en.status_code == 200
+
+    asset_googl = session.query(Asset).filter(Asset.ticker == "GOOGL").first()
+    assert asset_googl is not None
+    assert asset_googl.cantidad_total == 2.0
+
+    # 3. Validación de campos obligatorios faltantes
+    res_invalid = client.post("/api/portfolio/trade", json={
+        "ticker": "AMZN",
+        "type": "BUY",
+        "usar_caja_broker": True
+    })
+    assert res_invalid.status_code == 400
+

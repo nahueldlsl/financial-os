@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlmodel import Session, select
 from database import get_session
-from models.models import Asset, Transaction
+from models.models import Asset, Transaction, TradeHistory, BrokerCash, BrokerSettings
 from services.import_strategies import ImportContext, SmartMergeStrategy
 from services.broker_import_service import BrokerImportService
 import json
@@ -12,15 +12,37 @@ router = APIRouter(prefix="/api/data", tags=["data"])
 @router.get("/export")
 def export_data(session: Session = Depends(get_session)):
     """
-    Exporta todo el contenido de Assets y Transactions.
+    Exporta todo el contenido de Assets, Transactions, TradeHistory, BrokerCash y BrokerSettings.
     """
     assets = session.exec(select(Asset)).all()
     transactions = session.exec(select(Transaction)).all()
+    trades = session.exec(select(TradeHistory)).all()
+    broker_cash = session.get(BrokerCash, 1)
+    broker_settings = session.get(BrokerSettings, 1)
 
     return {
         "assets": [asset.model_dump() for asset in assets],
-        "transactions": [tx.model_dump() for tx in transactions]
+        "transactions": [tx.model_dump() for tx in transactions],
+        "trades": [trade.model_dump() for trade in trades],
+        "broker_cash": broker_cash.model_dump() if broker_cash else None,
+        "broker_settings": broker_settings.model_dump() if broker_settings else None,
     }
+
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+
+async def read_json_upload(file: UploadFile, max_bytes: int = MAX_UPLOAD_SIZE) -> Any:
+    filename = (file.filename or "").lower()
+    if not filename.endswith('.json'):
+        raise HTTPException(status_code=400, detail="El archivo debe tener formato .json")
+    
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Archivo demasiado grande (máximo {max_bytes // (1024 * 1024)} MB)")
+    
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="El archivo no contiene un JSON válido")
 
 @router.post("/import")
 async def import_data(
@@ -32,16 +54,9 @@ async def import_data(
     Importa datos desde un archivo JSON usando una estrategia definida.
     Default: 'merge' (Smart Merge).
     """
-    if not file.filename.endswith('.json'):
-        raise HTTPException(status_code=400, detail="El archivo debe ser JSON")
+    data = await read_json_upload(file)
 
-    try:
-        content = await file.read()
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="JSON inválido")
-
-    # Selección de Estrategia (OCP: Se pueden agregar más aquí sin romper lo demás)
+    # Selección de Estrategia
     if strategy == "merge":
         import_strategy = SmartMergeStrategy()
     else:
@@ -68,17 +83,11 @@ async def import_broker_data(
     Importa datos directos del Broker cruzando Historial + Posiciones.
     Crea o actualiza los Assets (Acciones) con Costo Base exacto.
     """
-    if not historial_file.filename.endswith('.json') or not posiciones_file.filename.endswith('.json'):
-        raise HTTPException(status_code=400, detail="Los archivos deben ser formato .json")
-
-    try:
-        historial_content = await historial_file.read()
-        posiciones_content = await posiciones_file.read()
-        
-        historial_json = json.loads(historial_content)
-        posiciones_json = json.loads(posiciones_content)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="JSON inválido proporcionado en los archivos")
+    historial_json = await read_json_upload(historial_file)
+    posiciones_json = await read_json_upload(posiciones_file)
+    
+    if not isinstance(historial_json, list) or not isinstance(posiciones_json, list):
+        raise HTTPException(status_code=400, detail="Los archivos de broker deben contener listas JSON")
         
     try:
         BrokerImportService.process_broker_data(session, historial_json, posiciones_json)

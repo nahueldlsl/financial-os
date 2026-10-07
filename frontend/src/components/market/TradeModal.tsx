@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
 import type { TradeAction } from '../../types';
 import { useTradeCalculator, type BrokerSettings } from '../../hooks/useTradeCalculator';
+import { getApiUrl } from '../../services/api';
 
 interface Props {
     isOpen: boolean;
@@ -40,7 +41,7 @@ export const TradeModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, initial
 
             // Cargar settings globales si no existen
             if (!settings) {
-                fetch('http://127.0.0.1:8000/api/settings/')
+                fetch(getApiUrl('/settings/'))
                     .then(res => res.json())
                     .then(data => setSettings(data))
                     .catch(err => console.error("Error loading settings in modal", err));

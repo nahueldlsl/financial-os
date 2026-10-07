@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Upload, FileJson } from 'lucide-react';
+import { getApiUrl } from '../../services/api';
 
 interface JsonImportModalProps {
     isOpen: boolean;
@@ -27,7 +28,7 @@ export function JsonImportModal({ isOpen, onClose }: JsonImportModalProps) {
             formData.append('historial_file', historialFile);
             formData.append('posiciones_file', posicionesFile);
 
-            const response = await fetch('http://localhost:8000/api/data/import-broker', {
+            const response = await fetch(getApiUrl('/data/import-broker'), {
                 method: 'POST',
                 body: formData,
             });

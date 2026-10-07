@@ -16,7 +16,7 @@ def create_mock_dataframe(rows=5):
     df = pd.DataFrame({'Close': [150.0 + i for i in range(rows)]}, index=dates)
     return df
 
-@patch("backend.routers.market.yf.Ticker")
+@patch("routers.market.yf.Ticker")
 def test_history_1y_defaults_to_daily(mock_ticker):
     # Configurar el Mock
     mock_instance = MagicMock()
@@ -33,7 +33,7 @@ def test_history_1y_defaults_to_daily(mock_ticker):
     # Verificar que se llamó con interval='1d'
     mock_instance.history.assert_called_with(period="1y", interval="1d", auto_adjust=True)
 
-@patch("backend.routers.market.yf.Ticker")
+@patch("routers.market.yf.Ticker")
 def test_history_1d_uses_hourly(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.history.return_value = create_mock_dataframe()
@@ -41,10 +41,10 @@ def test_history_1d_uses_hourly(mock_ticker):
 
     response = client.get("/api/market/history/AAPL?range=1d")
     
-    # Verificar que se llamó con interval='1h'
-    mock_instance.history.assert_called_with(period="1d", interval="1h", auto_adjust=True)
+    # Verificar que se llamó con interval='15m'
+    mock_instance.history.assert_called_with(period="1d", interval="15m", auto_adjust=True)
 
-@patch("backend.routers.market.yf.Ticker")
+@patch("routers.market.yf.Ticker")
 def test_handle_empty_data(mock_ticker):
     mock_instance = MagicMock()
     # Simular DataFrame vacío

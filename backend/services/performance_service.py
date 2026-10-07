@@ -19,22 +19,7 @@ from sqlalchemy import func
 from models.models import Asset, TradeHistory
 from services.market_service import MarketDataService
 from services.valuation_service import ValuationService
-
-
-def _safe_float(val) -> float:
-    try:
-        if val is None:
-            return 0.0
-        f = float(val)
-        if math.isnan(f) or math.isinf(f):
-            return 0.0
-        return f
-    except Exception:
-        return 0.0
-
-
-def _to_dollars(cents) -> float:
-    return _safe_float(cents) / 100.0
+from utils.money import safe_float as _safe_float, to_dollars as _to_dollars
 
 
 class PerformanceBreakdownService:
@@ -110,11 +95,13 @@ class PerformanceBreakdownService:
         # ──────────────────────────────────────────────
         # 6. TOTAL RETURN & PERCENTAGES
         # ──────────────────────────────────────────────
+        # Las comisiones ya están capitalizadas en el costo base de las posiciones abiertas (unrealized_gain)
+        # y deducidas de los ingresos netos en las ventas cerradas (realized_gain).
+        # Se exponen informativamente en transaction_costs, pero no se restan doblemente.
         total_return_cents = (
             unrealized_gain_cents
             + _safe_float(realized_gain_cents)
             + _safe_float(dividends_cents)
-            - _safe_float(total_commission_cents)
         )
         total_return_dollars = _to_dollars(total_return_cents)
         
